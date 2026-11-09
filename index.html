@@ -8,9 +8,9 @@
   <meta name="description" content="让回忆缓缓流动。五列全屏照片墙，奇数列向上、偶数列向下，无限循环，支持添加自己的照片。">
   <title>Column Drift · 流动的回忆</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=auto-equal-v4">
   <script src="photos.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=auto-equal-v4" defer></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -26,12 +26,7 @@
       <div class="viewport" id="viewport" aria-hidden="true"></div>
       <div id="loading" class="loading" role="status">正在整理回忆…</div>
     </main>
-    <footer class="toolbar" aria-label="播放设置">
-      <div class="playback-actions">
-        <button id="play-toggle" class="button round" type="button" aria-label="暂停" title="暂停（空格键）"><svg id="play-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4v12M13 4v12"/></svg></button>
-        <button id="restart" class="button icon-button" type="button" aria-label="重新播放" title="重新播放"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7a6 6 0 1 1-.2 5M4 3v4h4"/></svg></button>
-      </div>
-      <div class="timeline-wrap"><label class="sr-only" for="timeline">播放位置（秒）</label><input id="timeline" type="range" min="0" max="12" step="0.001" value="0"><output id="time" for="timeline">00.0 / 12.0</output></div>
+    <footer class="toolbar" aria-label="相册设置">
       <div class="settings">
         <label class="columns-label" for="columns">布局</label><select id="columns" aria-label="照片列数"><option value="2">2 列</option><option value="3">3 列</option><option value="4">4 列</option><option value="5" selected>5 列</option><option value="6">6 列</option></select>
         <button id="next-group" class="button subtle" type="button" hidden>换一组 <span id="group-label">1 / 1</span></button>

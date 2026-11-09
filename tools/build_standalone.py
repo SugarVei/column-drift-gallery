@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import base64
 import json
+import re
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -19,9 +20,9 @@ for photo in photos:
     if not asset.is_relative_to(root / 'assets'):
         raise ValueError('Photo must be inside the assets directory')
     photo['src'] = 'data:image/jpeg;base64,' + base64.b64encode(asset.read_bytes()).decode('ascii')
-html = html.replace('<link rel="stylesheet" href="styles.css">', '<style>\n' + css + '\n</style>')
+html = re.sub(r'<link rel="stylesheet" href="styles\.css(?:\?[^\"]*)?">', lambda _: '<style>\n' + css + '\n</style>', html)
 html = html.replace('<script src="photos.js" defer></script>', '')
-html = html.replace('<script src="app.js" defer></script>', '')
+html = re.sub(r'<script src="app\.js(?:\?[^\"]*)?" defer></script>', '', html)
 scripts = '<script>window.DEFAULT_PHOTOS = ' + json.dumps(photos, separators=(',', ':')) + ';</script>\n'
 scripts += '<script>\n' + app.replace('</script', '<\\/script') + '\n</script>\n'
 html = html.replace('</body>', scripts + '</body>')

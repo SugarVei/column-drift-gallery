@@ -7,8 +7,7 @@
   const viewport = $('viewport');
   const app = $('app');
   const photoDialog = $('photo-dialog');
-  const timeline = $('timeline');
-  const timeLabel = $('time');
+  const VERSION = 'auto-equal-v4';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
   let columns = 5;
   try {
@@ -31,7 +30,6 @@
   let origin = 0;
   let anchor = 0;
   let playing = false;
-  let wantedPlaying = false;
   let ready = false;
   let raf = 0;
   let buildVersion = 0;
@@ -39,7 +37,6 @@
   let importing = false;
   let database = null;
   let storageAvailable = true;
-  let lastUIUpdate = -Infinity;
 
   function notice(message, long = false) {
     clearTimeout(noticeTimer);
@@ -99,64 +96,40 @@
     $('manage-photos').textContent = personal.length ? `我的照片 · ${personal.length}` : '我的照片';
   }
 
-  function setPlayIcon() {
-    $('play-icon').innerHTML = wantedPlaying ? '<path d="M7 4v12M13 4v12"/>' : '<path d="m7 4 9 6-9 6Z" fill="currentColor" stroke="none"/>';
-    $('play-toggle').setAttribute('aria-label', wantedPlaying ? '暂停' : '播放');
-    $('play-toggle').title = `${wantedPlaying ? '暂停' : '播放'}（空格键）`;
-  }
-
-  function updateTimeline(seconds) {
-    timeline.value = String(seconds);
-    timeLabel.textContent = `${seconds.toFixed(1).padStart(4, '0')} / 12.0`;
-    timeline.setAttribute('aria-valuetext', `${seconds.toFixed(1)} 秒，共 12 秒`);
-  }
-
-  function paint(seconds, updateControls = true) {
-    // Odd columns move up; even columns move down at the same absolute speed.
-    // Wrap each direction inside one repeated strip so every loop join matches.
-    // 8 steps / 12 s = one card every 1.5 s, also on high-refresh displays.
-    const progress = ((seconds % DURATION) + DURATION) % DURATION / DURATION;
-    const reverseProgress = progress === 0 ? 0 : 1 - progress;
-    const up = `translate3d(0, ${-progress * cycle}px, 0)`;
-    const down = `translate3d(0, ${-reverseProgress * cycle}px, 0)`;
+  function paint(seconds) {
+    // ONE clock and ONE pixel distance for every column. Only the sign differs.
+    // Subtracting a full repeated strip for downward motion keeps the viewport covered.
+    const elapsed = ((seconds % DURATION) + DURATION) % DURATION;
+    const distance = elapsed * (cycle / DURATION);
+    const up = `translate3d(0, ${-distance}px, 0)`;
+    const down = `translate3d(0, ${distance === 0 ? 0 : distance - cycle}px, 0)`;
     for (let index = 0; index < strips.length; index++) {
       strips[index].style.transform = index % 2 === 0 ? up : down;
     }
-    if (updateControls) updateTimeline(seconds);
   }
 
   function tick(now) {
     if (!playing) return;
     time = (origin + (now - anchor) / 1000) % DURATION;
-    // Only compositor transforms change each frame; controls repaint at 10 Hz.
-    paint(time, false);
-    if (now - lastUIUpdate >= 100) {
-      updateTimeline(time);
-      lastUIUpdate = now;
-    }
+    // Nothing except the five strip transforms is updated during animation.
+    paint(time);
     raf = requestAnimationFrame(tick);
   }
 
   function play() {
-    wantedPlaying = true;
-    setPlayIcon();
     if (playing || !ready) return;
     if (time >= DURATION) time = 0;
     origin = time;
     anchor = performance.now();
-    lastUIUpdate = -Infinity;
     playing = true;
-    setPlayIcon();
     raf = requestAnimationFrame(tick);
   }
 
-  function pause({ preserveIntent = false } = {}) {
-    if (!preserveIntent) wantedPlaying = false;
+  function pause() {
     if (playing) time = (origin + (performance.now() - anchor) / 1000) % DURATION;
     playing = false;
     cancelAnimationFrame(raf);
     paint(time);
-    setPlayIcon();
   }
 
   function seek(value) {
@@ -179,10 +152,9 @@
     paint(time);
   }
 
-  async function build({ reset = true, autoplay = wantedPlaying } = {}) {
+  async function build({ reset = true } = {}) {
     const version = ++buildVersion;
-    wantedPlaying = autoplay;
-    pause({ preserveIntent: true });
+    pause();
     ready = false;
     if (reset) time = 0;
     refreshCollection();
@@ -227,7 +199,7 @@
     if (results.some(result => result.status === 'rejected')) notice('部分照片暂时未能加载，请刷新后重试。');
     ready = true;
     measure();
-    if (wantedPlaying) play();
+    play();
   }
 
   function setImporting(value) {
@@ -284,7 +256,7 @@
       if (additions.length) {
         personal = [...additions, ...personal];
         group = 0;
-        await build({ autoplay: true });
+        await build();
         renderPersonalPhotos();
         const note = saved ? '照片仅保存在当前浏览器。' : '浏览器存储不可用或已满，这次新增照片仅在当前页面保留。';
         notice(`已添加 ${additions.length} 张照片。${note}${failures ? ` ${failures} 张未能添加（支持 JPG、PNG、WebP 等常见格式，单次最多 100 张）。` : ''}`, !saved || failures > 0);
@@ -325,24 +297,21 @@
     catch (_) { if (photo.persisted) { notice('无法更新浏览器存储，请稍后重试。'); return; } }
     personal = personal.filter(item => item.id !== id);
     group = 0;
-    await build({ autoplay: wantedPlaying });
+    await build();
     URL.revokeObjectURL(photo.src);
     renderPersonalPhotos();
     notice('已从当前浏览器移除这张照片。');
   }
 
-  $('play-toggle').addEventListener('click', () => wantedPlaying ? pause() : play());
-  $('restart').addEventListener('click', () => { seek(0); play(); });
-  $('timeline').addEventListener('input', () => seek($('timeline').value));
   $('columns').addEventListener('change', () => {
     columns = Number($('columns').value);
     try { localStorage.setItem('column-drift-columns', String(columns)); } catch (_) {}
     group = 0;
-    build({ autoplay: wantedPlaying });
+    build();
   });
   $('next-group').addEventListener('click', () => {
     group = (group + 1) % Math.ceil(photos.length / (columns * ROWS));
-    build({ autoplay: wantedPlaying });
+    build();
   });
   $('add-photos').addEventListener('click', () => $('file-input').click());
   $('dialog-add').addEventListener('click', () => $('file-input').click());
@@ -360,7 +329,7 @@
     const removed = personal;
     personal = [];
     group = 0;
-    await build({ autoplay: wantedPlaying });
+    await build();
     removed.forEach(photo => URL.revokeObjectURL(photo.src));
     renderPersonalPhotos();
     notice('已恢复默认相册。');
@@ -383,19 +352,15 @@
     $('fullscreen').setAttribute('aria-label', label);
     $('fullscreen').title = label;
   });
-  document.addEventListener('keydown', event => {
-    if (event.code === 'Space' && !photoDialog.open && !/INPUT|BUTTON|SELECT|TEXTAREA/.test(event.target.tagName)) {
-      event.preventDefault(); wantedPlaying ? pause() : play();
-    }
-  });
   new ResizeObserver(() => {
     if (!strips.length) return;
-    if (requiredRepeats() !== repeatCount && ready) build({ reset: false, autoplay: wantedPlaying });
+    if (requiredRepeats() !== repeatCount && ready) build({ reset: false });
     else measure();
   }).observe(viewport);
 
   Object.defineProperty(window, 'columnDrift', { value: Object.freeze({
     play, pause, seek,
+    get version() { return VERSION; },
     get ready() { return ready; },
     get playing() { return playing; },
     get currentTime() { return time; },
@@ -406,6 +371,7 @@
     get group() { return group; },
     get stepPixels() { return cycle / ROWS; },
     get stepsPerSecond() { return ROWS / DURATION; },
+    get pixelsPerSecond() { return cycle / DURATION; },
     get directions() { return Array.from({ length: columns }, (_, i) => i % 2 === 0 ? 'up' : 'down'); },
     get importing() { return importing; }
   }) });
@@ -418,7 +384,7 @@
         .sort((a, b) => b.createdAt - a.createdAt || (a.order || 0) - (b.order || 0))
         .map(photo => ({ ...photo, persisted: true, src: URL.createObjectURL(photo.blob) }));
     } catch (_) { storageAvailable = false; }
-    await build({ autoplay: true });
+    await build();
   }
   init();
 })();
