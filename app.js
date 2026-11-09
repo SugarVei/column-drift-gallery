@@ -7,9 +7,18 @@
   const viewport = $('viewport');
   const app = $('app');
   const photoDialog = $('photo-dialog');
-  const initialColumns = matchMedia('(max-width: 720px)').matches ? 3 : 5;
-  let columns = initialColumns;
-  try { columns = Number(localStorage.getItem('column-drift-columns')) || initialColumns; } catch (_) {}
+  const timeline = $('timeline');
+  const timeLabel = $('time');
+  const LAYOUT_VERSION = 'five-column-alternating-v1';
+  let columns = 5;
+  try {
+    if (localStorage.getItem('column-drift-layout-version') === LAYOUT_VERSION) {
+      columns = Number(localStorage.getItem('column-drift-columns')) || 5;
+    } else {
+      localStorage.setItem('column-drift-columns', '5');
+      localStorage.setItem('column-drift-layout-version', LAYOUT_VERSION);
+    }
+  } catch (_) {}
   columns = Math.max(2, Math.min(6, columns));
   $('columns').value = String(columns);
   let personal = [];
@@ -30,6 +39,7 @@
   let importing = false;
   let database = null;
   let storageAvailable = true;
+  let lastUIUpdate = -Infinity;
 
   function notice(message, long = false) {
     clearTimeout(noticeTimer);
@@ -95,21 +105,35 @@
     $('play-toggle').title = `${wantedPlaying ? '暂停' : '播放'}（空格键）`;
   }
 
-  function paint(seconds) {
-    // One shared offset is deliberately used for ALL columns: identical speed and phase.
-    // 8 card steps / 12 s = one card every 1.5 s, the original middle-column speed.
+  function updateTimeline(seconds) {
+    timeline.value = String(seconds);
+    timeLabel.textContent = `${seconds.toFixed(1).padStart(4, '0')} / 12.0`;
+    timeline.setAttribute('aria-valuetext', `${seconds.toFixed(1)} 秒，共 12 秒`);
+  }
+
+  function paint(seconds, updateControls = true) {
+    // Odd columns move up; even columns move down at the same absolute speed.
+    // Wrap each direction inside one repeated strip so every loop join matches.
+    // 8 steps / 12 s = one card every 1.5 s, also on high-refresh displays.
     const progress = ((seconds % DURATION) + DURATION) % DURATION / DURATION;
-    const transform = `translateY(${-progress * cycle}px)`;
-    for (const strip of strips) strip.style.transform = transform;
-    $('timeline').value = String(seconds);
-    $('time').textContent = `${seconds.toFixed(1).padStart(4, '0')} / 12.0`;
-    $('timeline').setAttribute('aria-valuetext', `${seconds.toFixed(1)} 秒，共 12 秒`);
+    const reverseProgress = progress === 0 ? 0 : 1 - progress;
+    const up = `translate3d(0, ${-progress * cycle}px, 0)`;
+    const down = `translate3d(0, ${-reverseProgress * cycle}px, 0)`;
+    for (let index = 0; index < strips.length; index++) {
+      strips[index].style.transform = index % 2 === 0 ? up : down;
+    }
+    if (updateControls) updateTimeline(seconds);
   }
 
   function tick(now) {
     if (!playing) return;
     time = (origin + (now - anchor) / 1000) % DURATION;
-    paint(time);
+    // Only compositor transforms change each frame; controls repaint at 10 Hz.
+    paint(time, false);
+    if (now - lastUIUpdate >= 100) {
+      updateTimeline(time);
+      lastUIUpdate = now;
+    }
     raf = requestAnimationFrame(tick);
   }
 
@@ -120,6 +144,7 @@
     if (time >= DURATION) time = 0;
     origin = time;
     anchor = performance.now();
+    lastUIUpdate = -Infinity;
     playing = true;
     setPlayIcon();
     raf = requestAnimationFrame(tick);
@@ -169,6 +194,7 @@
     for (let column = 0; column < columns; column++) {
       const wrapper = document.createElement('div');
       wrapper.className = 'column';
+      wrapper.dataset.direction = column % 2 === 0 ? 'up' : 'down';
       const strip = document.createElement('div');
       strip.className = 'strip';
       for (let repeat = 0; repeat < repeatCount; repeat++) {
@@ -186,7 +212,7 @@
           image.src = photo.src;
           card.append(image);
           strip.append(card);
-          if (repeat === 0) images.push(image);
+          images.push(image);
         }
       }
       wrapper.append(strip);
@@ -380,6 +406,7 @@
     get group() { return group; },
     get stepPixels() { return cycle / ROWS; },
     get stepsPerSecond() { return ROWS / DURATION; },
+    get directions() { return Array.from({ length: columns }, (_, i) => i % 2 === 0 ? 'up' : 'down'); },
     get importing() { return importing; }
   }) });
 

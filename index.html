@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#101014">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="让回忆缓缓流动。全屏照片墙，同速向上漂移，支持添加自己的照片。">
+  <meta name="description" content="让回忆缓缓流动。五列全屏照片墙，奇数列向上、偶数列向下，无限循环，支持添加自己的照片。">
   <title>Column Drift · 流动的回忆</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
@@ -22,7 +22,7 @@
         <button id="fullscreen" class="button icon-button" type="button" aria-label="进入全屏" title="进入全屏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></button>
       </div>
     </header>
-    <main class="gallery" id="gallery" aria-label="同速向上漂移的照片墙">
+    <main class="gallery" id="gallery" aria-label="五列照片墙：奇数列向上、偶数列向下，连续循环">
       <div class="viewport" id="viewport" aria-hidden="true"></div>
       <div id="loading" class="loading" role="status">正在整理回忆…</div>
     </main>
