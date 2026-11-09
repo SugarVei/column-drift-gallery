@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101014">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="让回忆缓缓流动。全屏照片墙，同速向上漂移，支持添加自己的照片。">
+  <title>Column Drift · 流动的回忆</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script src="photos.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="identity"><h1>Column Drift<span class="dot" aria-hidden="true"></span></h1><span id="photo-count" class="photo-count">40 张回忆</span></div>
+      <div class="top-actions">
+        <button id="add-photos" class="button primary" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>添加照片</button>
+        <button id="manage-photos" class="button subtle" type="button" title="管理自己添加的照片">我的照片</button>
+        <button id="fullscreen" class="button icon-button" type="button" aria-label="进入全屏" title="进入全屏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></button>
+      </div>
+    </header>
+    <main class="gallery" id="gallery" aria-label="同速向上漂移的照片墙">
+      <div class="viewport" id="viewport" aria-hidden="true"></div>
+      <div id="loading" class="loading" role="status">正在整理回忆…</div>
+    </main>
+    <footer class="toolbar" aria-label="播放设置">
+      <div class="playback-actions">
+        <button id="play-toggle" class="button round" type="button" aria-label="暂停" title="暂停（空格键）"><svg id="play-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4v12M13 4v12"/></svg></button>
+        <button id="restart" class="button icon-button" type="button" aria-label="重新播放" title="重新播放"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7a6 6 0 1 1-.2 5M4 3v4h4"/></svg></button>
+      </div>
+      <div class="timeline-wrap"><label class="sr-only" for="timeline">播放位置（秒）</label><input id="timeline" type="range" min="0" max="12" step="0.001" value="0"><output id="time" for="timeline">00.0 / 12.0</output></div>
+      <div class="settings">
+        <label class="columns-label" for="columns">布局</label><select id="columns" aria-label="照片列数"><option value="2">2 列</option><option value="3">3 列</option><option value="4">4 列</option><option value="5" selected>5 列</option><option value="6">6 列</option></select>
+        <button id="next-group" class="button subtle" type="button" hidden>换一组 <span id="group-label">1 / 1</span></button>
+        <button id="hide-controls" class="button icon-button" type="button" aria-label="隐藏控制栏" title="隐藏控制栏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 8 6 6 6-6"/></svg></button>
+      </div>
+    </footer>
+    <button id="show-controls" class="button show-controls" type="button" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M4 10h12M4 14h12"/></svg>显示控制栏</button>
+  </div>
+  <input id="file-input" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp" multiple tabindex="-1">
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="photo-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-header"><div><h2 id="dialog-title">我的照片</h2><p>添加的照片仅保存在当前浏览器。</p></div><button id="close-dialog" class="button icon-button" aria-label="关闭" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div>
+    <div id="personal-grid" class="personal-grid"></div>
+    <p id="empty-message" class="empty-message">还没有添加照片。把喜欢的瞬间放进来吧。</p>
+    <div class="dialog-footer"><span id="saved-count">0 张照片</span><button id="restore-defaults" class="button subtle danger" type="button" disabled>清除我的照片</button><button id="dialog-add" class="button primary" type="button">添加照片</button></div>
+  </dialog>
+  <noscript><p class="noscript">请启用浏览器 JavaScript 以播放照片动画。</p></noscript>
+</body>
+</html>

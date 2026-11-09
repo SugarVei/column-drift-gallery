@@ -1,0 +1,397 @@
+(() => {
+  'use strict';
+  const DURATION = 12;
+  const ROWS = 8;
+  const DEFAULTS = window.DEFAULT_PHOTOS || [];
+  const $ = id => document.getElementById(id);
+  const viewport = $('viewport');
+  const app = $('app');
+  const photoDialog = $('photo-dialog');
+  const initialColumns = matchMedia('(max-width: 720px)').matches ? 3 : 5;
+  let columns = initialColumns;
+  try { columns = Number(localStorage.getItem('column-drift-columns')) || initialColumns; } catch (_) {}
+  columns = Math.max(2, Math.min(6, columns));
+  $('columns').value = String(columns);
+  let personal = [];
+  let photos = [...DEFAULTS];
+  let group = 0;
+  let strips = [];
+  let repeatCount = 0;
+  let cycle = 1;
+  let time = 0;
+  let origin = 0;
+  let anchor = 0;
+  let playing = false;
+  let wantedPlaying = false;
+  let ready = false;
+  let raf = 0;
+  let buildVersion = 0;
+  let noticeTimer;
+  let importing = false;
+  let database = null;
+  let storageAvailable = true;
+
+  function notice(message, long = false) {
+    clearTimeout(noticeTimer);
+    $('toast').textContent = message;
+    $('toast').hidden = false;
+    noticeTimer = setTimeout(() => { $('toast').hidden = true; }, long ? 7500 : 4300);
+  }
+
+  function openDatabase() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) { settled = true; reject(new Error('Storage timeout')); }
+      }, 2500);
+      const request = indexedDB.open('column-drift-personal-photos', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('photos', { keyPath: 'id' });
+      request.onsuccess = () => {
+        clearTimeout(timer);
+        if (settled) { request.result.close(); return; }
+        settled = true;
+        request.result.onversionchange = () => request.result.close();
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        clearTimeout(timer);
+        if (!settled) { settled = true; reject(request.error || new Error('Storage failed')); }
+      };
+      request.onblocked = () => {
+        clearTimeout(timer);
+        if (!settled) { settled = true; reject(new Error('Storage blocked')); }
+      };
+    });
+  }
+
+  function transact(mode, action) {
+    return new Promise((resolve, reject) => {
+      if (!database) { reject(new Error('Storage unavailable')); return; }
+      const transaction = database.transaction('photos', mode);
+      let result;
+      const request = action(transaction.objectStore('photos'));
+      if (request) request.onsuccess = () => { result = request.result; };
+      transaction.oncomplete = () => resolve(result);
+      transaction.onerror = transaction.onabort = () => reject(transaction.error || new Error('Storage failed'));
+    });
+  }
+
+  function refreshCollection() {
+    // Personal additions go first, so a newly added photo appears immediately.
+    photos = [...personal, ...DEFAULTS];
+    const pages = Math.max(1, Math.ceil(photos.length / (columns * ROWS)));
+    group = Math.min(group, pages - 1);
+    $('photo-count').textContent = `${photos.length} 张回忆`;
+    $('group-label').textContent = `${group + 1} / ${pages}`;
+    $('next-group').hidden = pages <= 1;
+    $('next-group').setAttribute('aria-label', `下一组照片，当前第 ${group + 1} 组，共 ${pages} 组`);
+    $('manage-photos').textContent = personal.length ? `我的照片 · ${personal.length}` : '我的照片';
+  }
+
+  function setPlayIcon() {
+    $('play-icon').innerHTML = wantedPlaying ? '<path d="M7 4v12M13 4v12"/>' : '<path d="m7 4 9 6-9 6Z" fill="currentColor" stroke="none"/>';
+    $('play-toggle').setAttribute('aria-label', wantedPlaying ? '暂停' : '播放');
+    $('play-toggle').title = `${wantedPlaying ? '暂停' : '播放'}（空格键）`;
+  }
+
+  function paint(seconds) {
+    // One shared offset is deliberately used for ALL columns: identical speed and phase.
+    // 8 card steps / 12 s = one card every 1.5 s, the original middle-column speed.
+    const progress = ((seconds % DURATION) + DURATION) % DURATION / DURATION;
+    const transform = `translateY(${-progress * cycle}px)`;
+    for (const strip of strips) strip.style.transform = transform;
+    $('timeline').value = String(seconds);
+    $('time').textContent = `${seconds.toFixed(1).padStart(4, '0')} / 12.0`;
+    $('timeline').setAttribute('aria-valuetext', `${seconds.toFixed(1)} 秒，共 12 秒`);
+  }
+
+  function tick(now) {
+    if (!playing) return;
+    time = (origin + (now - anchor) / 1000) % DURATION;
+    paint(time);
+    raf = requestAnimationFrame(tick);
+  }
+
+  function play() {
+    wantedPlaying = true;
+    setPlayIcon();
+    if (playing || !ready) return;
+    if (time >= DURATION) time = 0;
+    origin = time;
+    anchor = performance.now();
+    playing = true;
+    setPlayIcon();
+    raf = requestAnimationFrame(tick);
+  }
+
+  function pause({ preserveIntent = false } = {}) {
+    if (!preserveIntent) wantedPlaying = false;
+    if (playing) time = (origin + (performance.now() - anchor) / 1000) % DURATION;
+    playing = false;
+    cancelAnimationFrame(raf);
+    paint(time);
+    setPlayIcon();
+  }
+
+  function seek(value) {
+    pause();
+    time = Math.max(0, Math.min(DURATION, Number(value) || 0));
+    paint(time);
+  }
+
+  function requiredRepeats() {
+    const gap = parseFloat(getComputedStyle(viewport).columnGap) || 0;
+    const width = (viewport.clientWidth - (columns - 1) * gap) / columns;
+    return Math.max(2, Math.ceil(viewport.clientHeight / (ROWS * (width + gap))) + 1);
+  }
+
+  function measure() {
+    if (!strips.length) return;
+    const cards = strips[0].children;
+    if (cards.length <= ROWS) return;
+    cycle = cards[ROWS].getBoundingClientRect().top - cards[0].getBoundingClientRect().top;
+    paint(time);
+  }
+
+  async function build({ reset = true, autoplay = wantedPlaying } = {}) {
+    const version = ++buildVersion;
+    wantedPlaying = autoplay;
+    pause({ preserveIntent: true });
+    ready = false;
+    if (reset) time = 0;
+    refreshCollection();
+    viewport.style.setProperty('--columns', columns);
+    repeatCount = requiredRepeats();
+    const fragment = document.createDocumentFragment();
+    const images = [];
+    strips = [];
+    for (let column = 0; column < columns; column++) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'column';
+      const strip = document.createElement('div');
+      strip.className = 'strip';
+      for (let repeat = 0; repeat < repeatCount; repeat++) {
+        for (let row = 0; row < ROWS; row++) {
+          const index = (group * columns * ROWS + row * columns + column) % photos.length;
+          const photo = photos[index];
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.dataset.photoId = photo.id;
+          const image = new Image();
+          image.alt = '';
+          image.draggable = false;
+          image.decoding = 'async';
+          image.style.objectPosition = photo.focus || '50% 50%';
+          image.src = photo.src;
+          card.append(image);
+          strip.append(card);
+          if (repeat === 0) images.push(image);
+        }
+      }
+      wrapper.append(strip);
+      fragment.append(wrapper);
+      strips.push(strip);
+    }
+    viewport.replaceChildren(fragment);
+    measure();
+    const results = await Promise.allSettled(images.map(image => image.decode()));
+    if (version !== buildVersion) return;
+    $('loading').hidden = true;
+    if (results.some(result => result.status === 'rejected')) notice('部分照片暂时未能加载，请刷新后重试。');
+    ready = true;
+    measure();
+    if (wantedPlaying) play();
+  }
+
+  function setImporting(value) {
+    importing = value;
+    ['add-photos', 'dialog-add', 'restore-defaults'].forEach(id => { $(id).disabled = value; });
+    $('add-photos').lastChild.textContent = value ? '正在添加…' : '添加照片';
+    $('restore-defaults').disabled = value || !personal.length;
+    for (const button of $('personal-grid').querySelectorAll('button')) button.disabled = value;
+  }
+
+  async function preparePhoto(file, index, batchTime) {
+    if (!/^image\/(jpeg|png|webp|gif|avif|bmp)$/i.test(file.type)) throw new Error('Unsupported image');
+    if (file.size > 60 * 1024 * 1024) throw new Error('Image too large');
+    const sourceURL = URL.createObjectURL(file);
+    const image = new Image();
+    image.src = sourceURL;
+    try {
+      await image.decode();
+      const ratio = Math.min(1, 1400 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#101014';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+      if (!blob) throw new Error('Image conversion failed');
+      return { id: `personal-${crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)}`,
+        name: file.name, createdAt: batchTime, order: index, blob, focus: '50% 50%' };
+    } finally {
+      URL.revokeObjectURL(sourceURL);
+    }
+  }
+
+  async function addPhotos(files) {
+    if (importing || !files.length) return;
+    const selected = [...files].slice(0, 100);
+    setImporting(true);
+    const additions = [];
+    const batchTime = Date.now();
+    let failures = files.length - selected.length;
+    let saved = true;
+    try {
+      for (let index = 0; index < selected.length; index++) {
+        try {
+          const photo = await preparePhoto(selected[index], index, batchTime);
+          let persisted = true;
+          try { await transact('readwrite', store => store.put(photo)); }
+          catch (_) { saved = false; persisted = false; storageAvailable = false; }
+          additions.push({ ...photo, persisted, src: URL.createObjectURL(photo.blob) });
+        } catch (_) { failures++; }
+      }
+      if (additions.length) {
+        personal = [...additions, ...personal];
+        group = 0;
+        await build({ autoplay: true });
+        renderPersonalPhotos();
+        const note = saved ? '照片仅保存在当前浏览器。' : '浏览器存储不可用或已满，这次新增照片仅在当前页面保留。';
+        notice(`已添加 ${additions.length} 张照片。${note}${failures ? ` ${failures} 张未能添加（支持 JPG、PNG、WebP 等常见格式，单次最多 100 张）。` : ''}`, !saved || failures > 0);
+      } else notice('未能添加照片。请选择 JPG、PNG、WebP 等常见图片格式，每张不超过 60 MB。', true);
+    } finally {
+      setImporting(false);
+      $('file-input').value = '';
+    }
+  }
+
+  function renderPersonalPhotos() {
+    $('personal-grid').replaceChildren();
+    $('empty-message').hidden = personal.length > 0;
+    $('saved-count').textContent = `${personal.length} 张照片`;
+    $('restore-defaults').disabled = importing || !personal.length;
+    for (const photo of personal) {
+      const item = document.createElement('div');
+      item.className = 'personal-item';
+      const image = new Image();
+      image.src = photo.src;
+      image.alt = photo.name || '添加的照片';
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', `删除照片 ${photo.name || ''}`);
+      remove.disabled = importing;
+      remove.addEventListener('click', () => removePhoto(photo.id));
+      item.append(image, remove);
+      $('personal-grid').append(item);
+    }
+  }
+
+  async function removePhoto(id) {
+    if (importing) return;
+    const photo = personal.find(item => item.id === id);
+    if (!photo) return;
+    try { await transact('readwrite', store => store.delete(id)); }
+    catch (_) { if (photo.persisted) { notice('无法更新浏览器存储，请稍后重试。'); return; } }
+    personal = personal.filter(item => item.id !== id);
+    group = 0;
+    await build({ autoplay: wantedPlaying });
+    URL.revokeObjectURL(photo.src);
+    renderPersonalPhotos();
+    notice('已从当前浏览器移除这张照片。');
+  }
+
+  $('play-toggle').addEventListener('click', () => wantedPlaying ? pause() : play());
+  $('restart').addEventListener('click', () => { seek(0); play(); });
+  $('timeline').addEventListener('input', () => seek($('timeline').value));
+  $('columns').addEventListener('change', () => {
+    columns = Number($('columns').value);
+    try { localStorage.setItem('column-drift-columns', String(columns)); } catch (_) {}
+    group = 0;
+    build({ autoplay: wantedPlaying });
+  });
+  $('next-group').addEventListener('click', () => {
+    group = (group + 1) % Math.ceil(photos.length / (columns * ROWS));
+    build({ autoplay: wantedPlaying });
+  });
+  $('add-photos').addEventListener('click', () => $('file-input').click());
+  $('dialog-add').addEventListener('click', () => $('file-input').click());
+  $('file-input').addEventListener('change', event => addPhotos(event.target.files));
+  $('manage-photos').addEventListener('click', () => { renderPersonalPhotos(); photoDialog.showModal(); });
+  $('close-dialog').addEventListener('click', () => photoDialog.close());
+  photoDialog.addEventListener('click', event => {
+    const rect = photoDialog.getBoundingClientRect();
+    if (event.target === photoDialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) photoDialog.close();
+  });
+  $('restore-defaults').addEventListener('click', async () => {
+    if (importing || !personal.length || !confirm('清除自己添加的全部照片？默认的 40 张照片会保留。')) return;
+    try { await transact('readwrite', store => store.clear()); }
+    catch (_) { if (personal.some(photo => photo.persisted)) { notice('无法更新浏览器存储，请稍后重试。'); return; } }
+    const removed = personal;
+    personal = [];
+    group = 0;
+    await build({ autoplay: wantedPlaying });
+    removed.forEach(photo => URL.revokeObjectURL(photo.src));
+    renderPersonalPhotos();
+    notice('已恢复默认相册。');
+  });
+  $('hide-controls').addEventListener('click', () => {
+    app.classList.add('controls-hidden'); $('show-controls').hidden = false;
+  });
+  $('show-controls').addEventListener('click', () => {
+    app.classList.remove('controls-hidden'); $('show-controls').hidden = true;
+  });
+  $('fullscreen').addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      else notice('当前浏览器不支持全屏按钮；可隐藏控制栏，或使用浏览器的全屏功能。', true);
+    } catch (_) { notice('未能进入全屏，可使用浏览器的全屏功能。'); }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const label = document.fullscreenElement ? '退出全屏' : '进入全屏';
+    $('fullscreen').setAttribute('aria-label', label);
+    $('fullscreen').title = label;
+  });
+  document.addEventListener('keydown', event => {
+    if (event.code === 'Space' && !photoDialog.open && !/INPUT|BUTTON|SELECT|TEXTAREA/.test(event.target.tagName)) {
+      event.preventDefault(); wantedPlaying ? pause() : play();
+    }
+  });
+  new ResizeObserver(() => {
+    if (!strips.length) return;
+    if (requiredRepeats() !== repeatCount && ready) build({ reset: false, autoplay: wantedPlaying });
+    else measure();
+  }).observe(viewport);
+
+  Object.defineProperty(window, 'columnDrift', { value: Object.freeze({
+    play, pause, seek,
+    get ready() { return ready; },
+    get playing() { return playing; },
+    get currentTime() { return time; },
+    get duration() { return DURATION; },
+    get columns() { return columns; },
+    get photoCount() { return photos.length; },
+    get personalCount() { return personal.length; },
+    get group() { return group; },
+    get stepPixels() { return cycle / ROWS; },
+    get stepsPerSecond() { return ROWS / DURATION; },
+    get importing() { return importing; }
+  }) });
+
+  async function init() {
+    try {
+      database = await openDatabase();
+      const stored = await transact('readonly', store => store.getAll());
+      personal = (stored || []).filter(photo => photo.blob instanceof Blob)
+        .sort((a, b) => b.createdAt - a.createdAt || (a.order || 0) - (b.order || 0))
+        .map(photo => ({ ...photo, persisted: true, src: URL.createObjectURL(photo.blob) }));
+    } catch (_) { storageAvailable = false; }
+    await build({ autoplay: true });
+  }
+  init();
+})();
