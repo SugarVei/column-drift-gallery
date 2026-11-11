@@ -8,7 +8,7 @@
   const app = $('app');
   const photoDialog = $('photo-dialog');
   const viewer = window.photoDisplays.createViewer();
-  const VERSION = 'photo-displays-v1';
+  const VERSION = 'photo-displays-v2';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
   const styles = ['drift', 'helix', 'velocity', 'sphere', 'tilt', 'wall'];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -38,6 +38,8 @@
   columns = Math.max(2, Math.min(6, columns));
   $('columns').value = String(columns);
   let personal = [];
+  let personalOnly = false;
+  try { personalOnly = localStorage.getItem('column-drift-personal-only') === 'true'; } catch (_) {}
   let photos = [...DEFAULTS];
   let group = 0;
   let strips = [];
@@ -112,7 +114,7 @@
 
   function refreshCollection() {
     // Personal additions go first, so a newly added photo appears immediately.
-    photos = [...personal, ...DEFAULTS];
+    photos = personalOnly && personal.length ? [...personal] : [...personal, ...DEFAULTS];
     const pages = Math.max(1, Math.ceil(photos.length / photosPerGroup()));
     group = Math.min(group, pages - 1);
     $('photo-count').textContent = `${photos.length} 张回忆`;
@@ -340,6 +342,8 @@
 
   function renderPersonalPhotos() {
     $('personal-grid').replaceChildren();
+    $('personal-only-option').hidden = personal.length === 0;
+    $('personal-only').checked = personalOnly;
     $('empty-message').hidden = personal.length > 0;
     $('saved-count').textContent = `${personal.length} 张照片`;
     $('restore-defaults').disabled = importing || !personal.length;
@@ -449,6 +453,12 @@
   $('dialog-add').addEventListener('click', () => $('file-input').click());
   $('file-input').addEventListener('change', event => addPhotos(event.target.files));
   $('manage-photos').addEventListener('click', () => { renderPersonalPhotos(); photoDialog.showModal(); });
+  $('personal-only').addEventListener('change', event => {
+    personalOnly = event.target.checked;
+    try { localStorage.setItem('column-drift-personal-only', String(personalOnly)); } catch (_) {}
+    group = 0;
+    build();
+  });
   $('close-dialog').addEventListener('click', () => photoDialog.close());
   photoDialog.addEventListener('click', event => {
     const rect = photoDialog.getBoundingClientRect();

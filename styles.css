@@ -68,6 +68,8 @@ h2{margin:0;font-size:20px;letter-spacing:-.5px;font-weight:600}
 .personal-item img{width:100%;aspect-ratio:1;object-fit:cover;display:block;border-radius:8px}
 .personal-item button{position:absolute;top:5px;right:5px;width:26px;height:26px;padding:0;border-radius:50%;border:1px solid #ffffff38;background:#101014db;color:white;font-size:18px;line-height:1}
 .empty-message{text-align:center;color:var(--muted);font-size:13px;padding:40px 0;line-height:1.7}
+.personal-only{display:flex;align-items:center;gap:8px;margin-top:18px;font-size:13px;color:var(--ink);cursor:pointer}
+.personal-only input{margin:0;accent-color:var(--focus)}
 .dialog-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:24px;flex-wrap:wrap}
 .dialog-footer>span{font-size:11px;color:var(--muted);margin-right:auto}
 .danger{color:var(--danger)!important}

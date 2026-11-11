@@ -8,11 +8,11 @@
   <meta name="description" content="全屏相册，支持漂移、双螺旋、速度折叠、互动照片球、斜向照片墙与无边照片墙。">
   <title>Column Drift · 流动的回忆</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css?v=photo-displays-v1">
+  <link rel="stylesheet" href="styles.css?v=photo-displays-v2">
   <script src="photos.js" defer></script>
   <script src="coverflow.js?v=helix-pair-v2" defer></script>
   <script src="photo-displays.js?v=photo-displays-v1" defer></script>
-  <script src="app.js?v=photo-displays-v1" defer></script>
+  <script src="app.js?v=photo-displays-v2" defer></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -57,6 +57,7 @@
     <div class="dialog-header"><div><h2 id="dialog-title">我的照片</h2><p>添加的照片仅保存在当前浏览器。</p></div><button id="close-dialog" class="button icon-button" aria-label="关闭" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div>
     <div id="personal-grid" class="personal-grid"></div>
     <p id="empty-message" class="empty-message">还没有添加照片。把喜欢的瞬间放进来吧。</p>
+    <label id="personal-only-option" class="personal-only" hidden><input id="personal-only" type="checkbox">仅展示我添加的照片</label>
     <div class="dialog-footer"><span id="saved-count">0 张照片</span><button id="restore-defaults" class="button subtle danger" type="button" disabled>清除我的照片</button><button id="dialog-add" class="button primary" type="button">添加照片</button></div>
   </dialog>
   <noscript><p class="noscript">请启用浏览器 JavaScript 以播放照片动画。</p></noscript>
