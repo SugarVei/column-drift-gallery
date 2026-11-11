@@ -23,9 +23,9 @@ for photo in photos:
     if not asset.is_relative_to(root / 'assets'):
         raise ValueError('Photo must be inside the assets directory')
     photo['src'] = 'data:image/jpeg;base64,' + base64.b64encode(asset.read_bytes()).decode('ascii')
+    photo.pop('thumbnail', None)
 html = re.sub(r'<link rel="stylesheet" href="styles\.css(?:\?[^\"]*)?">', lambda _: '<style>\n' + css + '\n</style>', html)
-html = html.replace('<script src="photos.js" defer></script>', '')
-html = re.sub(r'<script src="(?:coverflow|photo-displays|app)\.js(?:\?[^\"]*)?" defer></script>', '', html)
+html = re.sub(r'<script src="(?:photos|coverflow|photo-displays|app)\.js(?:\?[^\"]*)?" defer></script>', '', html)
 if args.mode == 'wall':
     html = html.replace('<html lang="zh-CN">', '<html lang="zh-CN" data-default-mode="wall">')
     html = html.replace("<title>Sugar' memory</title>", "<title>Sugar' memory · 无边照片墙</title>")

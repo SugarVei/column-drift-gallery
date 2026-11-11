@@ -21,6 +21,7 @@
 
     let trigger;
     let pressedBackdrop = false;
+    let previewVersion = 0;
     close.addEventListener('click', () => dialog.close());
     dialog.addEventListener('pointerdown', event => {
       pressedBackdrop = event.target === dialog;
@@ -31,6 +32,7 @@
     });
     dialog.addEventListener('close', () => {
       if (dialog.open) return;
+      previewVersion++;
       image.removeAttribute('src');
       if (trigger?.isConnected) {
         const destination = trigger.hidden ? trigger.closest('.sphere-stage') : trigger;
@@ -43,6 +45,7 @@
       close() { if (dialog.open) dialog.close(); },
       show(photo, index, button) {
         if (dialog.open) return;
+        const version = ++previewVersion;
         pressedBackdrop = false;
         trigger = button;
         function sizePreview(aspect) {
@@ -52,9 +55,18 @@
         const thumb = button.querySelector('img');
         sizePreview(thumb?.naturalHeight ? thumb.naturalWidth / thumb.naturalHeight : 1);
         image.onload = () => sizePreview(image.naturalWidth / image.naturalHeight);
-        image.src = photo.src;
+        image.src = photo.thumbnail || photo.src;
         image.alt = `第 ${index + 1} 张照片`;
         dialog.showModal();
+        if (photo.thumbnail) {
+          const original = new Image();
+          original.src = photo.src;
+          original.decode().then(() => {
+            if (dialog.open && version === previewVersion) image.src = original.src;
+          }).catch(() => {
+            // Keep the available thumbnail when the original cannot be loaded.
+          });
+        }
         if (!reducedMotion.matches && image.animate) {
           image.animate([
             {transform:'scale(.94)',opacity:0.5},
@@ -82,7 +94,7 @@
     tile.index = index;
     tile.button.dataset.photoId = photo.id;
     tile.button.setAttribute('aria-label', `打开第 ${index + 1} 张照片`);
-    tile.image.src = photo.src;
+    tile.image.src = photo.thumbnail || photo.src;
     tile.image.style.objectPosition = photo.focus || '50% 50%';
   }
 

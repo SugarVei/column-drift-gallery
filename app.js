@@ -8,7 +8,7 @@
   const app = $('app');
   const photoDialog = $('photo-dialog');
   const viewer = window.photoDisplays.createViewer();
-  const VERSION = 'memory-dock-v1';
+  const VERSION = 'memory-dock-v2';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
   const styles = ['drift', 'helix', 'velocity', 'sphere', 'tilt', 'wall'];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -250,6 +250,7 @@
     repeatCount = requiredRepeats();
     const fragment = document.createDocumentFragment();
     const images = [];
+    const firstRow = [];
     strips = [];
     for (let column = 0; column < count; column++) {
       const wrapper = document.createElement('div');
@@ -301,7 +302,11 @@
           image.draggable = false;
           image.decoding = 'async';
           image.style.objectPosition = photo.focus || '50% 50%';
-          image.src = photo.src;
+          if (repeat === 0 && row === 0) {
+            image.fetchPriority = 'high';
+            firstRow.push(image);
+          }
+          image.src = photo.thumbnail || photo.src;
           card.append(image);
           strip.append(card);
           images.push(image);
@@ -313,6 +318,9 @@
     }
     grid.replaceChildren(fragment);
     measure();
+    Promise.allSettled(firstRow.map(image => image.decode())).then(() => {
+      if (version === buildVersion) $('loading').hidden = true;
+    });
     const results = await Promise.allSettled(images.map(image => image.decode()));
     if (version !== buildVersion) return;
     $('loading').hidden = true;

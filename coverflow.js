@@ -80,7 +80,7 @@
       card.photoId = photo.id;
       card.element.dataset.photoIndex = index;
       card.element.dataset.photoId = photo.id;
-      card.image.src = photo.src;
+      card.image.src = photo.thumbnail || photo.src;
       card.image.style.objectPosition = photo.focus || '50% 50%';
       card.element.setAttribute('aria-label', `打开第 ${indexOffset + index + 1} 张照片`);
     }
