@@ -30,7 +30,9 @@ h1{font-size:18px;line-height:1;font-weight:650;letter-spacing:-.6px;margin:0;di
 .card img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 45%;user-select:none;pointer-events:none}
 .loading{position:absolute;inset:0;display:grid;place-items:center;background:#101014;font-size:13px;color:var(--muted)}
 .toolbar{height:52px;padding:0 var(--inset);display:flex;align-items:center;flex-shrink:0}
+.style-picker{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .settings{display:flex;align-items:center;gap:10px;margin-left:auto}
+.app:not([data-mode="drift"]) #columns,.app:not([data-mode="drift"]) .settings .columns-label{display:none}
 .columns-label{font-size:11px;color:var(--muted)}
 select{font-size:12px;border:1px solid var(--line);border-radius:8px;background:#18191d;color:#e3e3d9;height:36px;padding:0 25px 0 10px;cursor:pointer}
 #group-label{font-size:10px;color:var(--muted);margin-left:3px}
@@ -59,3 +61,40 @@ h2{margin:0;font-size:20px;letter-spacing:-.5px;font-weight:600}
 }
 @media(max-width:380px){h1{font-size:14px}.dot{display:none}#manage-photos{font-size:0;width:32px;padding:0}#manage-photos::after{content:'相册';font-size:11px}.top-actions{gap:3px}.settings .button{padding:0 5px}.settings{gap:3px}#group-label{display:none}}
 @media(max-height:480px) and (min-width:721px){.topbar{height:52px}.toolbar{height:54px}}
+
+.viewport[data-mode="helix"],.viewport[data-mode="velocity"]{display:block}
+.flow-layout{
+  width:100%;height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:clamp(14px,3vh,28px);
+}
+.flow-stage{
+  position:relative;width:100%;overflow:hidden;flex-shrink:0;perspective:1200px;
+  touch-action:pan-y;cursor:grab;user-select:none;outline:none;
+}
+.flow-stage:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.flow-stage.is-dragging,.flow-stage.is-dragging .flow-card{cursor:grabbing}
+.flow-helix .flow-stage{
+  width:min(100%,896px);height:min(100%,704px);
+  mask-image:linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent);
+}
+.flow-velocity .flow-stage{
+  height:clamp(170px,54dvh,416px);max-height:calc(100% - 66px);perspective:1000px;
+}
+.flow-card{
+  position:absolute;top:50%;left:50%;width:var(--photo-width);aspect-ratio:4/5;
+  padding:0;border:0;border-radius:12px;background:#21241e;overflow:hidden;
+  backface-visibility:hidden;will-change:transform;box-shadow:0 14px 28px -18px #000b;
+}
+.flow-helix .flow-card{pointer-events:none}
+.flow-velocity .flow-card{aspect-ratio:1/1.3;cursor:inherit}
+.flow-card img{display:block;width:100%;height:100%;object-fit:cover;pointer-events:none}
+.flow-navigation{display:flex;align-items:center;justify-content:center;gap:16px}
+.flow-caption{width:110px;text-align:center;color:#dddcd4;font-size:13px;font-variant-numeric:tabular-nums}
+.flow-arrow.button{width:38px;height:38px;border-radius:50%;padding:0}
+.flow-arrow span{width:7px;height:7px;border-top:1.5px solid currentColor;border-right:1.5px solid currentColor;transform:translateX(-1px) rotate(45deg)}
+.flow-arrow[data-direction="previous"] span{transform:translateX(1px) rotate(-135deg)}
+@media(max-width:480px){
+  .flow-stage{perspective:850px}
+  .flow-velocity .flow-stage{perspective:760px}
+  .flow-card{border-radius:9px}
+}

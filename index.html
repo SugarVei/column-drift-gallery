@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#101014">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="让回忆缓缓流动。五列全屏照片墙，奇数列向上、偶数列向下，无限循环，支持添加自己的照片。">
+  <meta name="description" content="全屏照片墙，支持五列漂移、双螺旋与速度折叠三种展示风格，可添加自己的照片。">
   <title>Column Drift · 流动的回忆</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css?v=auto-equal-v4">
+  <link rel="stylesheet" href="styles.css?v=coverflow-v1">
   <script src="photos.js" defer></script>
-  <script src="app.js?v=auto-equal-v4" defer></script>
+  <script src="coverflow.js?v=coverflow-v1" defer></script>
+  <script src="app.js?v=coverflow-v1" defer></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -22,11 +23,19 @@
         <button id="fullscreen" class="button icon-button" type="button" aria-label="进入全屏" title="进入全屏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></button>
       </div>
     </header>
-    <main class="gallery" id="gallery" aria-label="五列照片墙：奇数列向上、偶数列向下，连续循环">
+    <main class="gallery" id="gallery" aria-label="照片展示">
       <div class="viewport" id="viewport" aria-hidden="true"></div>
       <div id="loading" class="loading" role="status">正在整理回忆…</div>
     </main>
     <footer class="toolbar" aria-label="相册设置">
+      <label class="style-picker" for="display-style">
+        <span class="columns-label">展示风格</span>
+        <select id="display-style" aria-label="展示风格">
+          <option value="drift">五列漂移</option>
+          <option value="helix">双螺旋</option>
+          <option value="velocity">速度折叠</option>
+        </select>
+      </label>
       <div class="settings">
         <label class="columns-label" for="columns">布局</label><select id="columns" aria-label="照片列数"><option value="2">2 列</option><option value="3">3 列</option><option value="4">4 列</option><option value="5" selected>5 列</option><option value="6">6 列</option></select>
         <button id="next-group" class="button subtle" type="button" hidden>换一组 <span id="group-label">1 / 1</span></button>

@@ -7,8 +7,16 @@
   const viewport = $('viewport');
   const app = $('app');
   const photoDialog = $('photo-dialog');
-  const VERSION = 'auto-equal-v4';
+  const VERSION = 'coverflow-v1';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
+  const styles = ['drift', 'helix', 'velocity'];
+  const requestedStyle = new URLSearchParams(location.search).get('mode');
+  let mode = requestedStyle;
+  if (!styles.includes(mode)) {
+    try { mode = localStorage.getItem('column-drift-style'); } catch (_) {}
+  }
+  if (!styles.includes(mode)) mode = 'drift';
+  $('display-style').value = mode;
   let columns = 5;
   try {
     if (localStorage.getItem('column-drift-layout-version') === LAYOUT_VERSION) {
@@ -24,6 +32,7 @@
   let photos = [...DEFAULTS];
   let group = 0;
   let strips = [];
+  let coverflow = null;
   let repeatCount = 0;
   let cycle = 1;
   let time = 0;
@@ -91,7 +100,7 @@
     group = Math.min(group, pages - 1);
     $('photo-count').textContent = `${photos.length} 张回忆`;
     $('group-label').textContent = `${group + 1} / ${pages}`;
-    $('next-group').hidden = pages <= 1;
+    $('next-group').hidden = mode !== 'drift' || pages <= 1;
     $('next-group').setAttribute('aria-label', `下一组照片，当前第 ${group + 1} 组，共 ${pages} 组`);
     $('manage-photos').textContent = personal.length ? `我的照片 · ${personal.length}` : '我的照片';
   }
@@ -117,7 +126,7 @@
   }
 
   function play() {
-    if (playing || !ready) return;
+    if (mode !== 'drift' || playing || !ready) return;
     if (time >= DURATION) time = 0;
     origin = time;
     anchor = performance.now();
@@ -155,9 +164,23 @@
   async function build({ reset = true } = {}) {
     const version = ++buildVersion;
     pause();
+    coverflow?.destroy();
+    coverflow = null;
     ready = false;
     if (reset) time = 0;
+    app.dataset.mode = mode;
+    viewport.dataset.mode = mode;
+    viewport.setAttribute('aria-hidden', String(mode === 'drift'));
     refreshCollection();
+    if (mode !== 'drift') {
+      strips = [];
+      coverflow = window.createPhotoCoverflow(viewport, mode, photos);
+      await coverflow.ready;
+      if (version !== buildVersion) return;
+      $('loading').hidden = true;
+      ready = true;
+      return;
+    }
     viewport.style.setProperty('--columns', columns);
     repeatCount = requiredRepeats();
     const fragment = document.createDocumentFragment();
@@ -303,6 +326,16 @@
     notice('已从当前浏览器移除这张照片。');
   }
 
+  $('display-style').addEventListener('change', event => {
+    mode = event.target.value;
+    try { localStorage.setItem('column-drift-style', mode); } catch (_) {}
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('mode', mode);
+      history.replaceState(null, '', url);
+    } catch (_) {}
+    build();
+  });
   $('columns').addEventListener('change', () => {
     columns = Number($('columns').value);
     try { localStorage.setItem('column-drift-columns', String(columns)); } catch (_) {}
@@ -353,7 +386,7 @@
     $('fullscreen').title = label;
   });
   new ResizeObserver(() => {
-    if (!strips.length) return;
+    if (mode !== 'drift' || !strips.length) return;
     if (requiredRepeats() !== repeatCount && ready) build({ reset: false });
     else measure();
   }).observe(viewport);
@@ -361,6 +394,7 @@
   Object.defineProperty(window, 'columnDrift', { value: Object.freeze({
     play, pause, seek,
     get version() { return VERSION; },
+    get mode() { return mode; },
     get ready() { return ready; },
     get playing() { return playing; },
     get currentTime() { return time; },
