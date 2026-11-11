@@ -3,6 +3,7 @@
 
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const wrap = (value, length) => ((value % length) + length) % length;
 
   function createViewer() {
     const dialog = document.createElement('dialog');
@@ -19,11 +20,17 @@
     document.body.append(dialog);
 
     let trigger;
+    let pressedBackdrop = false;
     close.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('pointerdown', event => {
+      pressedBackdrop = event.target === dialog;
+    });
     dialog.addEventListener('click', event => {
-      if (event.target === dialog) dialog.close();
+      if (event.target === dialog && pressedBackdrop) dialog.close();
+      pressedBackdrop = false;
     });
     dialog.addEventListener('close', () => {
+      if (dialog.open) return;
       image.removeAttribute('src');
       if (trigger?.isConnected) {
         const destination = trigger.hidden ? trigger.closest('.sphere-stage') : trigger;
@@ -34,45 +41,49 @@
     return {
       get open() { return dialog.open; },
       close() { if (dialog.open) dialog.close(); },
-      show(photo, index, button, sphereDiameter) {
+      show(photo, index, button) {
         if (dialog.open) return;
+        pressedBackdrop = false;
         trigger = button;
-        dialog.dataset.scene = sphereDiameter ? 'sphere' : 'wall';
-        if (sphereDiameter) {
-          const thumb = button.querySelector('img');
-          const aspect = thumb.naturalHeight ? thumb.naturalWidth / thumb.naturalHeight : 1;
-          dialog.style.setProperty('--preview-width', `${sphereDiameter * 0.94 * Math.min(aspect, 1)}px`);
+        function sizePreview(aspect) {
+          dialog.style.setProperty('--preview-size', `${91 * Math.min(aspect, 1)}vmin`);
           dialog.style.setProperty('--preview-aspect', String(aspect));
         }
+        const thumb = button.querySelector('img');
+        sizePreview(thumb?.naturalHeight ? thumb.naturalWidth / thumb.naturalHeight : 1);
+        image.onload = () => sizePreview(image.naturalWidth / image.naturalHeight);
         image.src = photo.src;
         image.alt = `第 ${index + 1} 张照片`;
         dialog.showModal();
         if (!reducedMotion.matches && image.animate) {
           image.animate([
-            {transform:'scale(.91) rotate(-1.5deg)',opacity:0.45},
-            {transform:'scale(1.012) rotate(.35deg)',opacity:1,offset:0.78},
-            {transform:'scale(1) rotate(0)',opacity:1},
-          ], {duration:280,easing:'ease-out'});
+            {transform:'scale(.94)',opacity:0.5},
+            {transform:'scale(1)',opacity:1},
+          ], {duration:240,easing:'ease-out'});
         }
       },
     };
   }
 
-  function photoTile(photo, index, viewer, className, lazy = false) {
+  function makeTile(className) {
     const button = document.createElement('button');
     button.className = className;
     button.type = 'button';
-    button.setAttribute('aria-label', `打开第 ${index + 1} 张照片`);
-    button.dataset.photoId = photo.id;
     const image = new Image();
     image.alt = '';
     image.decoding = 'async';
     image.draggable = false;
-    if (lazy) image.loading = 'lazy';
-    image.src = photo.src;
-    image.style.objectPosition = photo.focus || '50% 50%';
     button.append(image);
-    return {button, image, open: diameter => viewer.show(photo, index, button, diameter)};
+    return {button, image, index: -1};
+  }
+
+  function setTilePhoto(tile, photo, index) {
+    if (tile.index === index) return;
+    tile.index = index;
+    tile.button.dataset.photoId = photo.id;
+    tile.button.setAttribute('aria-label', `打开第 ${index + 1} 张照片`);
+    tile.image.src = photo.src;
+    tile.image.style.objectPosition = photo.focus || '50% 50%';
   }
 
   function createWall(viewport, photos, viewer) {
@@ -81,49 +92,72 @@
     viewport.replaceChildren(wall);
     const events = new AbortController();
     const options = {signal:events.signal};
-    let columns = 0;
-    let maxX = 0;
-    let maxY = 0;
+    let size = 1;
+    let sourceColumns = 0;
+    let sourceRows = 0;
+    let poolColumns = 0;
+    let poolRows = 0;
+    let firstColumn;
+    let firstRow;
+    let tiles = [];
     let x = 0;
     let y = 0;
     let drag;
     let suppressClick = false;
 
-    function place(nextX, nextY) {
-      x = clamp(nextX, 0, maxX);
-      y = clamp(nextY, 0, maxY);
-      wall.style.transform = `translate3d(${-x}px, ${-y}px, 0)`;
+    function place(nextX, nextY, force = false) {
+      x = nextX;
+      y = nextY;
+      const column = Math.floor(x / size) - 1;
+      const row = Math.floor(y / size) - 1;
+      if (force || column !== firstColumn || row !== firstRow) {
+        firstColumn = column;
+        firstRow = row;
+        // Recycle the far edge of the pool as new world cells enter on the opposite side.
+        for (let r = 0; r < poolRows; r++) {
+          const worldRow = row + r;
+          const poolRow = wrap(worldRow, poolRows);
+          const sourceRow = wrap(worldRow, sourceRows);
+          for (let c = 0; c < poolColumns; c++) {
+            const worldColumn = column + c;
+            const poolColumn = wrap(worldColumn, poolColumns);
+            const tile = tiles[poolRow * poolColumns + poolColumn];
+            const index = (sourceRow * sourceColumns + wrap(worldColumn, sourceColumns)) % photos.length;
+            setTilePhoto(tile, photos[index], index);
+            tile.button.style.left = `${c * size}px`;
+            tile.button.style.top = `${r * size}px`;
+            tile.button.tabIndex = r > 0 && r < poolRows - 1 && c > 0 && c < poolColumns - 1 ? 0 : -1;
+          }
+        }
+      }
+      wall.style.transform = `translate3d(${column * size - x}px, ${row * size - y}px, 0)`;
     }
 
     function measure() {
       const width = viewport.clientWidth;
       const height = viewport.clientHeight;
       if (!width || !height) return;
-      const narrow = width <= 720;
-      const nextColumns = Math.min(photos.length, narrow ? 5 : 8);
-      const rows = Math.ceil(photos.length / nextColumns);
-      // Leave at least one row and two columns outside the opening view when possible.
-      const size = Math.ceil(Math.max(width / Math.min(nextColumns, narrow ? 3 : 6), height / Math.max(1, rows - 1)));
-      const relativeX = maxX ? x / maxX : 0.5;
-      const relativeY = maxY ? y / maxY : 0.5;
-      if (columns !== nextColumns) {
-        columns = nextColumns;
-        const tiles = document.createDocumentFragment();
-        for (let slot = 0; slot < columns * rows; slot++) {
-          const index = slot % photos.length;
-          const tile = photoTile(photos[index], index, viewer, 'wall-tile', slot >= 20);
+      const previousSize = size;
+      const visibleColumns = width <= 560 ? 3 : width <= 900 ? 4 : width >= 1680 ? 8 : 6;
+      size = Math.ceil(width / visibleColumns);
+      sourceColumns = Math.min(photos.length, width <= 720 ? 5 : 8);
+      sourceRows = Math.ceil(photos.length / sourceColumns);
+      const nextColumns = Math.ceil(width / size) + 2;
+      const nextRows = Math.ceil(height / size) + 2;
+      if (poolColumns !== nextColumns || poolRows !== nextRows) {
+        poolColumns = nextColumns;
+        poolRows = nextRows;
+        tiles = Array.from({length: poolColumns * poolRows}, () => {
+          const tile = makeTile('wall-tile');
           tile.button.addEventListener('click', event => {
-            if (!suppressClick || event.detail === 0) tile.open();
+            if (!suppressClick || event.detail === 0) viewer.show(photos[tile.index], tile.index, tile.button);
           }, options);
-          tiles.append(tile.button);
-        }
-        wall.replaceChildren(tiles);
+          return tile;
+        });
+        wall.replaceChildren(...tiles.map(tile => tile.button));
       }
-      wall.style.setProperty('--wall-columns', columns);
       wall.style.setProperty('--wall-tile-size', `${size}px`);
-      maxX = Math.max(0, columns * size - width);
-      maxY = Math.max(0, rows * size - height);
-      place(maxX * relativeX, maxY * relativeY);
+      place(x / previousSize * size, y / previousSize * size, true);
     }
 
     viewport.addEventListener('pointerdown', event => {
@@ -145,9 +179,14 @@
     }, options);
     function release(event) {
       if (!drag || event.pointerId !== drag.id) return;
+      const tapped = event.type === 'pointerup' && event.pointerType === 'touch' && !drag.moved
+        ? event.target.closest('.wall-tile')
+        : null;
       suppressClick = drag.moved;
       drag = null;
       viewport.classList.remove('wall-dragging');
+      // A touch browser can suppress the native click on a tile that just moved.
+      tapped?.click();
     }
     window.addEventListener('pointerup', release, options);
     window.addEventListener('pointercancel', release, options);
@@ -163,10 +202,7 @@
       const rect = image.getBoundingClientRect();
       return rect.right > bounds.left && rect.left < bounds.right && rect.bottom > bounds.top && rect.top < bounds.bottom;
     });
-    const ready = Promise.allSettled(firstView.map(image => {
-      image.loading = 'eager';
-      return image.decode();
-    }));
+    const ready = Promise.allSettled(firstView.map(image => image.decode()));
     return {
       ready,
       destroy() {
@@ -192,12 +228,14 @@
       const ring = Math.sqrt(1 - y * y);
       const angle = index * goldenAngle;
       const photoIndex = index % photos.length;
-      const tile = photoTile(photos[photoIndex], photoIndex, viewer, 'sphere-tile');
+      const tile = makeTile('sphere-tile');
+      setTilePhoto(tile, photos[photoIndex], photoIndex);
+      const open = () => viewer.show(photos[photoIndex], photoIndex, tile.button);
       tile.button.tabIndex = -1;
       tile.button.addEventListener('click', event => {
-        if (!suppressClick || event.detail === 0) tile.open(radius * 2.06);
+        if (!suppressClick || event.detail === 0) open();
       }, options);
-      return {...tile,x:Math.cos(angle)*ring,y,z:Math.sin(angle)*ring};
+      return {...tile,open,x:Math.cos(angle)*ring,y,z:Math.sin(angle)*ring};
     });
     stage.append(...tiles.map(tile => tile.button));
     viewport.replaceChildren(stage);
@@ -305,7 +343,7 @@
         case 'ArrowRight': yaw += 0.22; break;
         case 'ArrowUp': pitch = clamp(pitch + 0.18, -1.05, 1.05); break;
         case 'ArrowDown': pitch = clamp(pitch - 0.18, -1.05, 1.05); break;
-        case 'Enter': foremost.open(radius * 2.06); break;
+        case 'Enter': foremost.open(); break;
         default: return;
       }
       event.preventDefault();

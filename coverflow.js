@@ -3,7 +3,7 @@
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const wrap = (value, length) => ((value % length) + length) % length;
-  function createFlow(viewport, mode, photos, {side = '', start = 0} = {}) {
+  function createFlow(viewport, mode, photos, viewer, {side = '', start = 0, indexOffset = 0} = {}) {
     const helix = mode === 'helix';
     const autoResumeDelay = helix ? 1000 : 4200;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -15,7 +15,7 @@
     stage.className = 'flow-stage';
     stage.tabIndex = 0;
     stage.setAttribute('role', 'region');
-    stage.setAttribute('aria-label', helix ? `${side}双螺旋照片，拖动或用方向键浏览` : '速度折叠照片，横向拖动或用方向键浏览');
+    stage.setAttribute('aria-label', helix ? `${side}双螺旋照片，拖动或用方向键浏览，按 Enter 打开照片` : '速度折叠照片，横向拖动或用方向键浏览，按 Enter 打开照片');
     layout.append(stage);
 
     let position = start;
@@ -60,12 +60,10 @@
     }
 
     function makeCard() {
-      const element = document.createElement(helix ? 'div' : 'button');
+      const element = document.createElement('button');
       element.className = 'flow-card';
-      if (!helix) {
-        element.type = 'button';
-        element.tabIndex = -1;
-      }
+      element.type = 'button';
+      element.tabIndex = -1;
       const image = new Image();
       image.alt = '';
       image.draggable = false;
@@ -80,9 +78,11 @@
       if (!helix) card.element.dataset.slot = slot;
       if (card.photoId === photo.id) return;
       card.photoId = photo.id;
+      card.element.dataset.photoIndex = index;
+      card.element.dataset.photoId = photo.id;
       card.image.src = photo.src;
       card.image.style.objectPosition = photo.focus || '50% 50%';
-      if (!helix) card.element.setAttribute('aria-label', `查看第 ${index + 1} 张照片`);
+      card.element.setAttribute('aria-label', `打开第 ${indexOffset + index + 1} 张照片`);
     }
 
     function measure() {
@@ -257,16 +257,20 @@
     }, {...options, passive: false});
 
     stage.addEventListener('click', event => {
-      if (helix || suppressClick) { suppressClick = false; return; }
+      if (suppressClick && event.detail !== 0) { suppressClick = false; return; }
       const card = event.target.closest('.flow-card');
       if (!card) return;
-      target = Number(card.dataset.slot);
+      const index = Number(card.dataset.photoIndex);
       deferAuto();
-      if (reducedMotion.matches) {
-        position = target;
-        velocity = 0;
-        render();
+      if (!helix) {
+        target = Number(card.dataset.slot);
+        if (reducedMotion.matches) {
+          position = target;
+          velocity = 0;
+          render();
+        }
       }
+      viewer.show(photos[index], indexOffset + index, card);
     }, options);
 
     layout.addEventListener('keydown', event => {
@@ -276,6 +280,11 @@
       } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
         event.preventDefault();
         step(1);
+      } else if (event.target === stage && event.key === 'Enter' && cards.length) {
+        event.preventDefault();
+        const center = Math.round(position);
+        const slot = wrap(center, visible * 2 + 1);
+        cards[slot * (helix ? 2 : 1)].element.click();
       }
     }, options);
 
@@ -301,8 +310,8 @@
     };
   }
 
-  window.createPhotoCoverflow = function createPhotoCoverflow(viewport, mode, photos) {
-    if (mode !== 'helix') return createFlow(viewport, mode, photos);
+  window.createPhotoCoverflow = function createPhotoCoverflow(viewport, mode, photos, viewer) {
+    if (mode !== 'helix') return createFlow(viewport, mode, photos, viewer);
 
     const pair = document.createElement('div');
     pair.className = 'helix-pair';
@@ -311,11 +320,12 @@
     viewport.replaceChildren(pair);
 
     const midpoint = Math.ceil(photos.length / 2);
-    const left = createFlow(lanes[0], mode, photos.slice(0, midpoint), {side: '左侧'});
+    const left = createFlow(lanes[0], mode, photos.slice(0, midpoint), viewer, {side: '左侧'});
     const rightPhotos = photos.slice(midpoint);
-    const right = createFlow(lanes[1], mode, rightPhotos.length ? rightPhotos : photos, {
+    const right = createFlow(lanes[1], mode, rightPhotos.length ? rightPhotos : photos, viewer, {
       side: '右侧',
       start: 2.5,
+      indexOffset: rightPhotos.length ? midpoint : 0,
     });
     return {
       ready: Promise.all([left.ready, right.ready]),

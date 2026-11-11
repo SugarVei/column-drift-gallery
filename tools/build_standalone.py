@@ -28,7 +28,7 @@ html = html.replace('<script src="photos.js" defer></script>', '')
 html = re.sub(r'<script src="(?:coverflow|photo-displays|app)\.js(?:\?[^\"]*)?" defer></script>', '', html)
 if args.mode == 'wall':
     html = html.replace('<html lang="zh-CN">', '<html lang="zh-CN" data-default-mode="wall">')
-    html = html.replace('<title>Column Drift · 流动的回忆</title>', '<title>无边照片墙</title>')
+    html = html.replace("<title>Sugar' memory</title>", "<title>Sugar' memory · 无边照片墙</title>")
 scripts = '<script>window.DEFAULT_PHOTOS = ' + json.dumps(photos, separators=(',', ':')) + ';</script>\n'
 scripts += '<script>\n' + coverflow.replace('</script', '<\\/script') + '\n</script>\n'
 scripts += '<script>\n' + displays.replace('</script', '<\\/script') + '\n</script>\n'

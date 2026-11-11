@@ -6,46 +6,47 @@
   <meta name="theme-color" content="#101014">
   <meta name="color-scheme" content="dark light">
   <meta name="description" content="全屏相册，支持漂移、双螺旋、速度折叠、互动照片球、斜向照片墙与无边照片墙。">
-  <title>Column Drift · 流动的回忆</title>
+  <title>Sugar' memory</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css?v=interactive-wall-v1">
+  <link rel="stylesheet" href="styles.css?v=memory-dock-v1">
   <script src="photos.js" defer></script>
-  <script src="coverflow.js?v=helix-pair-v2" defer></script>
-  <script src="photo-displays.js?v=interactive-wall-v1" defer></script>
-  <script src="app.js?v=interactive-wall-v1" defer></script>
+  <script src="coverflow.js?v=memory-dock-v1" defer></script>
+  <script src="photo-displays.js?v=memory-dock-v1" defer></script>
+  <script src="app.js?v=memory-dock-v1" defer></script>
 </head>
 <body>
   <div class="app" id="app">
     <header class="topbar">
-      <div class="identity"><h1>Column Drift<span class="dot" aria-hidden="true"></span></h1><span id="photo-count" class="photo-count">40 张回忆</span></div>
+      <div class="identity"><h1>Sugar' memory<span class="dot" aria-hidden="true"></span></h1><span id="photo-count" class="photo-count">40</span></div>
       <div class="top-actions">
         <button id="add-photos" class="button primary" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>添加照片</button>
         <button id="manage-photos" class="button subtle" type="button" title="管理自己添加的照片">我的照片</button>
         <button id="fullscreen" class="button icon-button" type="button" aria-label="进入全屏" title="进入全屏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></button>
       </div>
     </header>
+    <nav class="style-dock" aria-label="展示风格与背景">
+      <div class="dock-styles">
+        <button class="dock-button" type="button" data-style="drift" aria-pressed="true" aria-label="五列漂移"><span class="style-orb" aria-hidden="true"></span><span class="dock-tip" aria-hidden="true">五列漂移</span></button>
+        <button class="dock-button" type="button" data-style="helix" aria-pressed="false" aria-label="双螺旋"><span class="style-orb" aria-hidden="true"></span><span class="dock-tip" aria-hidden="true">双螺旋</span></button>
+        <button class="dock-button" type="button" data-style="velocity" aria-pressed="false" aria-label="速度折叠"><span class="style-orb" aria-hidden="true"></span><span class="dock-tip" aria-hidden="true">速度折叠</span></button>
+        <button class="dock-button" type="button" data-style="sphere" aria-pressed="false" aria-label="互动照片球"><span class="style-orb" aria-hidden="true"></span><span class="dock-tip" aria-hidden="true">互动照片球</span></button>
+        <button class="dock-button" type="button" data-style="tilt" aria-pressed="false" aria-label="斜向照片墙"><span class="style-orb" aria-hidden="true"></span><span class="dock-tip" aria-hidden="true">斜向照片墙</span></button>
+        <button class="dock-button" type="button" data-style="wall" aria-pressed="false" aria-label="无边照片墙"><span class="style-orb" aria-hidden="true"></span><span class="dock-tip" aria-hidden="true">无边照片墙</span></button>
+      </div>
+      <div class="dock-theme">
+        <button id="theme-toggle" class="liquid-toggle" type="button" role="switch" aria-label="黑色背景" aria-checked="true">
+          <span class="liquid-thumb" aria-hidden="true"></span><span class="dock-tip" aria-hidden="true">黑色背景</span>
+        </button>
+      </div>
+    </nav>
     <main class="gallery" id="gallery" aria-label="照片展示">
-      <div class="viewport" id="viewport" aria-hidden="true"></div>
+      <div class="viewport" id="viewport"></div>
       <div id="loading" class="loading" role="status">正在整理回忆…</div>
     </main>
     <footer class="toolbar" aria-label="相册设置">
-      <label class="style-picker" for="display-style">
-        <span class="columns-label">展示风格</span>
-        <select id="display-style" aria-label="展示风格">
-          <option value="drift">五列漂移</option>
-          <option value="helix">双螺旋</option>
-          <option value="velocity">速度折叠</option>
-          <option value="sphere">互动照片球</option>
-          <option value="tilt">斜向照片墙</option>
-          <option value="wall">无边照片墙</option>
-        </select>
-      </label>
       <div class="settings">
         <label class="columns-label" for="columns">布局</label><select id="columns" aria-label="照片列数"><option value="2">2 列</option><option value="3">3 列</option><option value="4">4 列</option><option value="5" selected>5 列</option><option value="6">6 列</option></select>
         <button id="next-group" class="button subtle" type="button" hidden>换一组 <span id="group-label">1 / 1</span></button>
-        <button id="theme-toggle" class="button theme-toggle" type="button" aria-label="切换白色背景" title="切换白色背景">
-          <span class="theme-swatch" aria-hidden="true"></span><span id="theme-label">白底</span>
-        </button>
         <button id="hide-controls" class="button icon-button" type="button" aria-label="隐藏控制栏" title="隐藏控制栏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 8 6 6 6-6"/></svg></button>
       </div>
     </footer>

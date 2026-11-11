@@ -8,7 +8,7 @@
   const app = $('app');
   const photoDialog = $('photo-dialog');
   const viewer = window.photoDisplays.createViewer();
-  const VERSION = 'interactive-wall-v1';
+  const VERSION = 'memory-dock-v1';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
   const styles = ['drift', 'helix', 'velocity', 'sphere', 'tilt', 'wall'];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -19,7 +19,8 @@
     try { mode = localStorage.getItem('column-drift-style'); } catch (_) {}
   }
   if (!styles.includes(mode)) mode = 'drift';
-  $('display-style').value = mode;
+  const styleButtons = [...document.querySelectorAll('.dock-button')];
+  updateDock();
   let theme = params.get('theme');
   if (theme !== 'light' && theme !== 'dark') {
     try { theme = localStorage.getItem('column-drift-theme'); } catch (_) {}
@@ -118,7 +119,7 @@
     photos = personalOnly && personal.length ? [...personal] : [...personal, ...DEFAULTS];
     const pages = Math.max(1, Math.ceil(photos.length / photosPerGroup()));
     group = Math.min(group, pages - 1);
-    $('photo-count').textContent = `${photos.length} 张回忆`;
+    $('photo-count').textContent = String(photos.length);
     $('group-label').textContent = `${group + 1} / ${pages}`;
     $('next-group').hidden = pages <= 1;
     $('next-group').setAttribute('aria-label', `下一组照片，当前第 ${group + 1} 组，共 ${pages} 组`);
@@ -214,7 +215,6 @@
     if (reset) time = 0;
     app.dataset.mode = mode;
     viewport.dataset.mode = mode;
-    viewport.setAttribute('aria-hidden', String(mode === 'drift'));
     if (mode === 'wall') viewport.tabIndex = 0;
     else viewport.removeAttribute('tabindex');
     refreshCollection();
@@ -224,7 +224,6 @@
       await coverflow.ready;
       if (version !== buildVersion) return;
       $('loading').hidden = true;
-      viewport.focus({preventScroll:true});
       ready = true;
       return;
     }
@@ -233,7 +232,7 @@
       const groupSize = photosPerGroup();
       coverflow = mode === 'sphere'
         ? window.photoDisplays.createSphere(viewport, photos.slice(group * groupSize, (group + 1) * groupSize), viewer)
-        : window.createPhotoCoverflow(viewport, mode, photos);
+        : window.createPhotoCoverflow(viewport, mode, photos, viewer);
       await coverflow.ready;
       if (version !== buildVersion) return;
       $('loading').hidden = true;
@@ -260,20 +259,24 @@
         const track = previousTiltPlayback[column] || {offset:0, frozen:null};
         tiltPlayback.push(track);
         wrapper.tabIndex = 0;
-        wrapper.setAttribute('role', 'button');
-        wrapper.setAttribute('aria-label', `暂停或继续第 ${column + 1} 列`);
-        wrapper.setAttribute('aria-pressed', String(track.frozen !== null));
+        wrapper.setAttribute('role', 'group');
+        function updateColumnLabel() {
+          const paused = track.frozen !== null;
+          wrapper.dataset.paused = String(paused);
+          wrapper.setAttribute('aria-label', `第 ${column + 1} 列，按空格${paused ? '继续' : '暂停'}`);
+        }
+        updateColumnLabel();
         wrapper.addEventListener('click', () => {
           if (track.frozen === null) track.frozen = loopTime(time - track.offset);
           else {
             track.offset = time - track.frozen;
             track.frozen = null;
           }
-          wrapper.setAttribute('aria-pressed', String(track.frozen !== null));
+          updateColumnLabel();
           paint(time);
         });
         wrapper.addEventListener('keydown', event => {
-          if (event.key !== 'Enter' && event.key !== ' ') return;
+          if (event.target !== wrapper || (event.key !== 'Enter' && event.key !== ' ')) return;
           event.preventDefault();
           if (!event.repeat) wrapper.click();
         });
@@ -284,9 +287,15 @@
         for (let row = 0; row < ROWS; row++) {
           const index = (group * count * ROWS + row * count + column) % photos.length;
           const photo = photos[index];
-          const card = document.createElement('div');
+          const card = document.createElement('button');
+          card.type = 'button';
           card.className = 'card';
           card.dataset.photoId = photo.id;
+          card.setAttribute('aria-label', `打开第 ${index + 1} 张照片`);
+          card.addEventListener('click', event => {
+            event.stopPropagation();
+            viewer.show(photo, index, card);
+          });
           const image = new Image();
           image.alt = '';
           image.draggable = false;
@@ -420,7 +429,7 @@
     try {
       const url = new URL(location.href);
       url.searchParams.set(name, value);
-      history.replaceState(null, '', url);
+      history.replaceState(name === 'theme' ? history.state : null, '', url);
     } catch (_) {}
   }
 
@@ -428,30 +437,41 @@
     const light = theme === 'light';
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]').content = light ? '#ffffff' : '#101014';
-    const label = light ? '切换黑色背景' : '切换白色背景';
-    $('theme-toggle').setAttribute('aria-label', label);
-    $('theme-toggle').title = label;
-    $('theme-label').textContent = light ? '黑底' : '白底';
+    $('theme-toggle').setAttribute('aria-checked', String(!light));
   }
 
   $('theme-toggle').addEventListener('click', () => {
     theme = theme === 'light' ? 'dark' : 'light';
     applyTheme();
+    if (!reducedMotion.matches) {
+      const thumb = $('theme-toggle').querySelector('.liquid-thumb');
+      thumb.animate([
+        {scale:'1 1'},
+        {scale:'1.38 .86',offset:0.42},
+        {scale:'1 1'},
+      ], {duration:320,easing:'ease-in-out'});
+    }
     try { localStorage.setItem('column-drift-theme', theme); } catch (_) {}
     setPageOption('theme', theme);
   });
+  function updateDock() {
+    for (const button of styleButtons) {
+      button.setAttribute('aria-pressed', String(button.dataset.style === mode));
+    }
+  }
+
   function selectMode(value) {
     mode = value;
     group = 0;
-    $('display-style').value = mode;
+    updateDock();
     if (mode !== 'wall') {
       try { localStorage.setItem('column-drift-style', mode); } catch (_) {}
     }
     build();
   }
 
-  $('display-style').addEventListener('change', event => {
-    const next = event.target.value;
+  function changeMode(next) {
+    if (next === mode) return;
     if (next === 'wall') {
       // Keep the previous style as the browser's Back destination.
       setPageOption('mode', mode);
@@ -464,7 +484,10 @@
       setPageOption('mode', next);
     }
     selectMode(next);
-  });
+  }
+  for (const button of styleButtons) {
+    button.addEventListener('click', () => changeMode(button.dataset.style));
+  }
   window.addEventListener('popstate', () => {
     const next = new URLSearchParams(location.search).get('mode');
     if (styles.includes(next) && next !== mode) selectMode(next);
