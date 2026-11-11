@@ -8,7 +8,7 @@
   const app = $('app');
   const photoDialog = $('photo-dialog');
   const viewer = window.photoDisplays.createViewer();
-  const VERSION = 'photo-displays-v2';
+  const VERSION = 'interactive-wall-v1';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
   const styles = ['drift', 'helix', 'velocity', 'sphere', 'tilt', 'wall'];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -43,6 +43,7 @@
   let photos = [...DEFAULTS];
   let group = 0;
   let strips = [];
+  let tiltPlayback = [];
   let coverflow = null;
   let grid = viewport;
   let repeatCount = 0;
@@ -124,15 +125,27 @@
     $('manage-photos').textContent = personal.length ? `我的照片 · ${personal.length}` : '我的照片';
   }
 
+  function loopTime(seconds) {
+    return ((seconds % DURATION) + DURATION) % DURATION;
+  }
+
   function paint(seconds) {
     // ONE clock and ONE pixel distance for every column. Only the sign differs.
     // Subtracting a full repeated strip for downward motion keeps the viewport covered.
-    const elapsed = ((seconds % DURATION) + DURATION) % DURATION;
+    const elapsed = loopTime(seconds);
     const distance = elapsed * (cycle / DURATION);
     const up = `translate3d(0, ${-distance}px, 0)`;
     const down = `translate3d(0, ${distance === 0 ? 0 : distance - cycle}px, 0)`;
     for (let index = 0; index < strips.length; index++) {
-      strips[index].style.transform = index % 2 === 0 ? up : down;
+      const track = tiltPlayback[index];
+      if (track) {
+        const phase = track.frozen ?? loopTime(seconds - track.offset);
+        const offset = phase * (cycle / DURATION);
+        const y = index % 2 === 0 ? -offset : (offset === 0 ? 0 : offset - cycle);
+        strips[index].style.transform = `translate3d(0, ${y}px, 0)`;
+      } else {
+        strips[index].style.transform = index % 2 === 0 ? up : down;
+      }
     }
   }
 
@@ -192,6 +205,8 @@
   async function build({ reset = true } = {}) {
     const version = ++buildVersion;
     pause();
+    const previousTiltPlayback = reset ? [] : tiltPlayback;
+    tiltPlayback = [];
     viewer.close();
     coverflow?.destroy();
     coverflow = null;
@@ -199,14 +214,15 @@
     if (reset) time = 0;
     app.dataset.mode = mode;
     viewport.dataset.mode = mode;
-    viewport.setAttribute('aria-hidden', String(mode === 'drift' || mode === 'tilt'));
+    viewport.setAttribute('aria-hidden', String(mode === 'drift'));
     if (mode === 'wall') viewport.tabIndex = 0;
     else viewport.removeAttribute('tabindex');
     refreshCollection();
     if (mode === 'wall') {
       strips = [];
-      window.photoDisplays.createWall(viewport, photos, viewer);
-      viewport.scrollTop = 0;
+      coverflow = window.photoDisplays.createWall(viewport, photos, viewer);
+      await coverflow.ready;
+      if (version !== buildVersion) return;
       $('loading').hidden = true;
       viewport.focus({preventScroll:true});
       ready = true;
@@ -240,6 +256,28 @@
       const wrapper = document.createElement('div');
       wrapper.className = 'column';
       wrapper.dataset.direction = column % 2 === 0 ? 'up' : 'down';
+      if (mode === 'tilt') {
+        const track = previousTiltPlayback[column] || {offset:0, frozen:null};
+        tiltPlayback.push(track);
+        wrapper.tabIndex = 0;
+        wrapper.setAttribute('role', 'button');
+        wrapper.setAttribute('aria-label', `暂停或继续第 ${column + 1} 列`);
+        wrapper.setAttribute('aria-pressed', String(track.frozen !== null));
+        wrapper.addEventListener('click', () => {
+          if (track.frozen === null) track.frozen = loopTime(time - track.offset);
+          else {
+            track.offset = time - track.frozen;
+            track.frozen = null;
+          }
+          wrapper.setAttribute('aria-pressed', String(track.frozen !== null));
+          paint(time);
+        });
+        wrapper.addEventListener('keydown', event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          if (!event.repeat) wrapper.click();
+        });
+      }
       const strip = document.createElement('div');
       strip.className = 'strip';
       for (let repeat = 0; repeat < repeatCount; repeat++) {

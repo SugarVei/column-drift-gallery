@@ -25,15 +25,25 @@
     });
     dialog.addEventListener('close', () => {
       image.removeAttribute('src');
-      if (trigger?.isConnected && !trigger.hidden) trigger.focus({preventScroll:true});
+      if (trigger?.isConnected) {
+        const destination = trigger.hidden ? trigger.closest('.sphere-stage') : trigger;
+        destination?.focus({preventScroll:true});
+      }
       trigger = null;
     });
     return {
       get open() { return dialog.open; },
       close() { if (dialog.open) dialog.close(); },
-      show(photo, index, button) {
+      show(photo, index, button, sphereDiameter) {
         if (dialog.open) return;
         trigger = button;
+        dialog.dataset.scene = sphereDiameter ? 'sphere' : 'wall';
+        if (sphereDiameter) {
+          const thumb = button.querySelector('img');
+          const aspect = thumb.naturalHeight ? thumb.naturalWidth / thumb.naturalHeight : 1;
+          dialog.style.setProperty('--preview-width', `${sphereDiameter * 0.94 * Math.min(aspect, 1)}px`);
+          dialog.style.setProperty('--preview-aspect', String(aspect));
+        }
         image.src = photo.src;
         image.alt = `第 ${index + 1} 张照片`;
         dialog.showModal();
@@ -62,18 +72,109 @@
     image.src = photo.src;
     image.style.objectPosition = photo.focus || '50% 50%';
     button.append(image);
-    return {button, image, open: () => viewer.show(photo, index, button)};
+    return {button, image, open: diameter => viewer.show(photo, index, button, diameter)};
   }
 
   function createWall(viewport, photos, viewer) {
     const wall = document.createElement('div');
     wall.className = 'edge-wall';
-    for (let index = 0; index < photos.length; index++) {
-      const tile = photoTile(photos[index], index, viewer, 'wall-tile', index >= 20);
-      tile.button.addEventListener('click', tile.open);
-      wall.append(tile.button);
-    }
     viewport.replaceChildren(wall);
+    const events = new AbortController();
+    const options = {signal:events.signal};
+    let columns = 0;
+    let maxX = 0;
+    let maxY = 0;
+    let x = 0;
+    let y = 0;
+    let drag;
+    let suppressClick = false;
+
+    function place(nextX, nextY) {
+      x = clamp(nextX, 0, maxX);
+      y = clamp(nextY, 0, maxY);
+      wall.style.transform = `translate3d(${-x}px, ${-y}px, 0)`;
+    }
+
+    function measure() {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      if (!width || !height) return;
+      const narrow = width <= 720;
+      const nextColumns = Math.min(photos.length, narrow ? 5 : 8);
+      const rows = Math.ceil(photos.length / nextColumns);
+      // Leave at least one row and two columns outside the opening view when possible.
+      const size = Math.ceil(Math.max(width / Math.min(nextColumns, narrow ? 3 : 6), height / Math.max(1, rows - 1)));
+      const relativeX = maxX ? x / maxX : 0.5;
+      const relativeY = maxY ? y / maxY : 0.5;
+      if (columns !== nextColumns) {
+        columns = nextColumns;
+        const tiles = document.createDocumentFragment();
+        for (let slot = 0; slot < columns * rows; slot++) {
+          const index = slot % photos.length;
+          const tile = photoTile(photos[index], index, viewer, 'wall-tile', slot >= 20);
+          tile.button.addEventListener('click', event => {
+            if (!suppressClick || event.detail === 0) tile.open();
+          }, options);
+          tiles.append(tile.button);
+        }
+        wall.replaceChildren(tiles);
+      }
+      wall.style.setProperty('--wall-columns', columns);
+      wall.style.setProperty('--wall-tile-size', `${size}px`);
+      maxX = Math.max(0, columns * size - width);
+      maxY = Math.max(0, rows * size - height);
+      place(maxX * relativeX, maxY * relativeY);
+    }
+
+    viewport.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || drag) return;
+      drag = {id:event.pointerId,startX:event.clientX,startY:event.clientY,x,y,moved:false};
+      suppressClick = false;
+    }, options);
+    window.addEventListener('pointermove', event => {
+      if (!drag || event.pointerId !== drag.id) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        viewport.setPointerCapture(event.pointerId);
+        viewport.classList.add('wall-dragging');
+      }
+      place(drag.x - dx, drag.y - dy);
+    }, options);
+    function release(event) {
+      if (!drag || event.pointerId !== drag.id) return;
+      suppressClick = drag.moved;
+      drag = null;
+      viewport.classList.remove('wall-dragging');
+    }
+    window.addEventListener('pointerup', release, options);
+    window.addEventListener('pointercancel', release, options);
+    viewport.addEventListener('lostpointercapture', event => {
+      if (event.target === viewport) release(event);
+    }, options);
+
+    const resize = new ResizeObserver(measure);
+    resize.observe(viewport);
+    measure();
+    const bounds = viewport.getBoundingClientRect();
+    const firstView = [...wall.querySelectorAll('img')].filter(image => {
+      const rect = image.getBoundingClientRect();
+      return rect.right > bounds.left && rect.left < bounds.right && rect.bottom > bounds.top && rect.top < bounds.bottom;
+    });
+    const ready = Promise.allSettled(firstView.map(image => {
+      image.loading = 'eager';
+      return image.decode();
+    }));
+    return {
+      ready,
+      destroy() {
+        events.abort();
+        resize.disconnect();
+        viewport.classList.remove('wall-dragging');
+      },
+    };
   }
 
   function createSphere(viewport, photos, viewer) {
@@ -93,8 +194,8 @@
       const photoIndex = index % photos.length;
       const tile = photoTile(photos[photoIndex], photoIndex, viewer, 'sphere-tile');
       tile.button.tabIndex = -1;
-      tile.button.addEventListener('click', () => {
-        if (!suppressClick) tile.open();
+      tile.button.addEventListener('click', event => {
+        if (!suppressClick || event.detail === 0) tile.open(radius * 2.06);
       }, options);
       return {...tile,x:Math.cos(angle)*ring,y,z:Math.sin(angle)*ring};
     });
@@ -135,7 +236,7 @@
     }
 
     function measure() {
-      radius = Math.min(stage.clientWidth, stage.clientHeight) * 0.41;
+      radius = Math.min(stage.clientWidth, stage.clientHeight) * 0.47;
       stage.style.perspective = `${radius * 4.3}px`;
       stage.style.setProperty('--sphere-tile-width', `${radius * 0.31 * Math.sqrt(64 / count)}px`);
       render();
@@ -144,8 +245,8 @@
     function tick(now) {
       const dt = lastFrame ? Math.min((now - lastFrame) / 1000, 0.04) : 0;
       lastFrame = now;
-      if (!drag && !viewer.open && !reducedMotion.matches) {
-        const auto = now >= resumeAt ? 0.17 : 0;
+      if (!drag && !reducedMotion.matches) {
+        const auto = now >= resumeAt ? (viewer.open ? 0.11 : 0.17) : 0;
         if (auto || Math.abs(yawSpeed) + Math.abs(pitchSpeed) > 0.01) {
           yaw += (yawSpeed + auto) * dt;
           pitch = clamp(pitch + pitchSpeed * dt, -1.05, 1.05);
@@ -204,7 +305,7 @@
         case 'ArrowRight': yaw += 0.22; break;
         case 'ArrowUp': pitch = clamp(pitch + 0.18, -1.05, 1.05); break;
         case 'ArrowDown': pitch = clamp(pitch - 0.18, -1.05, 1.05); break;
-        case 'Enter': foremost.open(); break;
+        case 'Enter': foremost.open(radius * 2.06); break;
         default: return;
       }
       event.preventDefault();
