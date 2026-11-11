@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#101014">
   <meta name="color-scheme" content="dark light">
-  <meta name="description" content="全屏照片墙，支持五列漂移、并排双螺旋与速度折叠，可切换黑白背景并添加照片。">
+  <meta name="description" content="全屏相册，支持漂移、双螺旋、速度折叠、互动照片球、斜向照片墙与无边照片墙。">
   <title>Column Drift · 流动的回忆</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css?v=helix-pair-v1">
+  <link rel="stylesheet" href="styles.css?v=photo-displays-v1">
   <script src="photos.js" defer></script>
   <script src="coverflow.js?v=helix-pair-v2" defer></script>
-  <script src="app.js?v=helix-pair-v2" defer></script>
+  <script src="photo-displays.js?v=photo-displays-v1" defer></script>
+  <script src="app.js?v=photo-displays-v1" defer></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -34,6 +35,9 @@
           <option value="drift">五列漂移</option>
           <option value="helix">双螺旋</option>
           <option value="velocity">速度折叠</option>
+          <option value="sphere">互动照片球</option>
+          <option value="tilt">斜向照片墙</option>
+          <option value="wall">无边照片墙</option>
         </select>
       </label>
       <div class="settings">

@@ -7,12 +7,14 @@
   const viewport = $('viewport');
   const app = $('app');
   const photoDialog = $('photo-dialog');
-  const VERSION = 'helix-pair-v2';
+  const viewer = window.photoDisplays.createViewer();
+  const VERSION = 'photo-displays-v1';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
-  const styles = ['drift', 'helix', 'velocity'];
+  const styles = ['drift', 'helix', 'velocity', 'sphere', 'tilt', 'wall'];
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const params = new URLSearchParams(location.search);
   const requestedStyle = params.get('mode');
-  let mode = requestedStyle;
+  let mode = requestedStyle || document.documentElement.dataset.defaultMode;
   if (!styles.includes(mode)) {
     try { mode = localStorage.getItem('column-drift-style'); } catch (_) {}
   }
@@ -40,6 +42,7 @@
   let group = 0;
   let strips = [];
   let coverflow = null;
+  let grid = viewport;
   let repeatCount = 0;
   let cycle = 1;
   let time = 0;
@@ -100,14 +103,21 @@
     });
   }
 
+  function photosPerGroup() {
+    if (mode === 'drift') return columns * ROWS;
+    if (mode === 'tilt') return 6 * ROWS;
+    if (mode === 'sphere') return 96;
+    return photos.length;
+  }
+
   function refreshCollection() {
     // Personal additions go first, so a newly added photo appears immediately.
     photos = [...personal, ...DEFAULTS];
-    const pages = Math.max(1, Math.ceil(photos.length / (columns * ROWS)));
+    const pages = Math.max(1, Math.ceil(photos.length / photosPerGroup()));
     group = Math.min(group, pages - 1);
     $('photo-count').textContent = `${photos.length} 张回忆`;
     $('group-label').textContent = `${group + 1} / ${pages}`;
-    $('next-group').hidden = mode !== 'drift' || pages <= 1;
+    $('next-group').hidden = pages <= 1;
     $('next-group').setAttribute('aria-label', `下一组照片，当前第 ${group + 1} 组，共 ${pages} 组`);
     $('manage-photos').textContent = personal.length ? `我的照片 · ${personal.length}` : '我的照片';
   }
@@ -133,7 +143,8 @@
   }
 
   function play() {
-    if (mode !== 'drift' || playing || !ready) return;
+    if ((mode !== 'drift' && mode !== 'tilt') || playing || !ready) return;
+    if (mode === 'tilt' && reducedMotion.matches) return;
     if (time >= DURATION) time = 0;
     origin = time;
     anchor = performance.now();
@@ -155,45 +166,75 @@
   }
 
   function requiredRepeats() {
-    const gap = parseFloat(getComputedStyle(viewport).columnGap) || 0;
-    const width = (viewport.clientWidth - (columns - 1) * gap) / columns;
-    return Math.max(2, Math.ceil(viewport.clientHeight / (ROWS * (width + gap))) + 1);
+    const count = mode === 'tilt' ? 6 : columns;
+    const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+    const width = (grid.clientWidth - (count - 1) * gap) / count;
+    const height = mode === 'tilt' ? width * 4 / 3 : width;
+    return Math.max(2, Math.ceil(grid.clientHeight / (ROWS * (height + gap))) + 1);
   }
 
   function measure() {
     if (!strips.length) return;
     const cards = strips[0].children;
     if (cards.length <= ROWS) return;
-    cycle = cards[ROWS].getBoundingClientRect().top - cards[0].getBoundingClientRect().top;
+    // The tilt is a projection. Measure its card spacing in the plane's own coordinates.
+    if (mode === 'tilt') {
+      const style = getComputedStyle(cards[0]);
+      cycle = (parseFloat(style.height) + parseFloat(style.marginBottom)) * ROWS;
+    } else {
+      cycle = cards[ROWS].getBoundingClientRect().top - cards[0].getBoundingClientRect().top;
+    }
     paint(time);
   }
 
   async function build({ reset = true } = {}) {
     const version = ++buildVersion;
     pause();
+    viewer.close();
     coverflow?.destroy();
     coverflow = null;
     ready = false;
     if (reset) time = 0;
     app.dataset.mode = mode;
     viewport.dataset.mode = mode;
-    viewport.setAttribute('aria-hidden', String(mode === 'drift'));
+    viewport.setAttribute('aria-hidden', String(mode === 'drift' || mode === 'tilt'));
+    if (mode === 'wall') viewport.tabIndex = 0;
+    else viewport.removeAttribute('tabindex');
     refreshCollection();
-    if (mode !== 'drift') {
+    if (mode === 'wall') {
       strips = [];
-      coverflow = window.createPhotoCoverflow(viewport, mode, photos);
+      window.photoDisplays.createWall(viewport, photos, viewer);
+      viewport.scrollTop = 0;
+      $('loading').hidden = true;
+      viewport.focus({preventScroll:true});
+      ready = true;
+      return;
+    }
+    if (mode !== 'drift' && mode !== 'tilt') {
+      strips = [];
+      const groupSize = photosPerGroup();
+      coverflow = mode === 'sphere'
+        ? window.photoDisplays.createSphere(viewport, photos.slice(group * groupSize, (group + 1) * groupSize), viewer)
+        : window.createPhotoCoverflow(viewport, mode, photos);
       await coverflow.ready;
       if (version !== buildVersion) return;
       $('loading').hidden = true;
       ready = true;
       return;
     }
-    viewport.style.setProperty('--columns', columns);
+    const count = mode === 'tilt' ? 6 : columns;
+    grid = viewport;
+    if (mode === 'tilt') {
+      grid = document.createElement('div');
+      grid.className = 'tilted-plane';
+      viewport.replaceChildren(grid);
+    }
+    grid.style.setProperty('--columns', count);
     repeatCount = requiredRepeats();
     const fragment = document.createDocumentFragment();
     const images = [];
     strips = [];
-    for (let column = 0; column < columns; column++) {
+    for (let column = 0; column < count; column++) {
       const wrapper = document.createElement('div');
       wrapper.className = 'column';
       wrapper.dataset.direction = column % 2 === 0 ? 'up' : 'down';
@@ -201,7 +242,7 @@
       strip.className = 'strip';
       for (let repeat = 0; repeat < repeatCount; repeat++) {
         for (let row = 0; row < ROWS; row++) {
-          const index = (group * columns * ROWS + row * columns + column) % photos.length;
+          const index = (group * count * ROWS + row * count + column) % photos.length;
           const photo = photos[index];
           const card = document.createElement('div');
           card.className = 'card';
@@ -221,7 +262,7 @@
       fragment.append(wrapper);
       strips.push(strip);
     }
-    viewport.replaceChildren(fragment);
+    grid.replaceChildren(fragment);
     measure();
     const results = await Promise.allSettled(images.map(image => image.decode()));
     if (version !== buildVersion) return;
@@ -357,11 +398,42 @@
     try { localStorage.setItem('column-drift-theme', theme); } catch (_) {}
     setPageOption('theme', theme);
   });
-  $('display-style').addEventListener('change', event => {
-    mode = event.target.value;
-    try { localStorage.setItem('column-drift-style', mode); } catch (_) {}
-    setPageOption('mode', mode);
+  function selectMode(value) {
+    mode = value;
+    group = 0;
+    $('display-style').value = mode;
+    if (mode !== 'wall') {
+      try { localStorage.setItem('column-drift-style', mode); } catch (_) {}
+    }
     build();
+  }
+
+  $('display-style').addEventListener('change', event => {
+    const next = event.target.value;
+    if (next === 'wall') {
+      // Keep the previous style as the browser's Back destination.
+      setPageOption('mode', mode);
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set('mode', next);
+        history.pushState({photoWall:true}, '', url);
+      } catch (_) {}
+    } else {
+      setPageOption('mode', next);
+    }
+    selectMode(next);
+  });
+  window.addEventListener('popstate', () => {
+    const next = new URLSearchParams(location.search).get('mode');
+    if (styles.includes(next) && next !== mode) selectMode(next);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || mode !== 'wall' || viewer.open || document.fullscreenElement) return;
+    if (history.state?.photoWall) history.back();
+    else {
+      setPageOption('mode', 'drift');
+      selectMode('drift');
+    }
   });
   $('columns').addEventListener('change', () => {
     columns = Number($('columns').value);
@@ -370,7 +442,7 @@
     build();
   });
   $('next-group').addEventListener('click', () => {
-    group = (group + 1) % Math.ceil(photos.length / (columns * ROWS));
+    group = (group + 1) % Math.ceil(photos.length / photosPerGroup());
     build();
   });
   $('add-photos').addEventListener('click', () => $('file-input').click());
@@ -413,10 +485,15 @@
     $('fullscreen').title = label;
   });
   new ResizeObserver(() => {
-    if (mode !== 'drift' || !strips.length) return;
+    if ((mode !== 'drift' && mode !== 'tilt') || !strips.length) return;
     if (requiredRepeats() !== repeatCount && ready) build({ reset: false });
     else measure();
   }).observe(viewport);
+  reducedMotion.addEventListener('change', () => {
+    if (mode !== 'tilt') return;
+    if (reducedMotion.matches) pause();
+    else play();
+  });
 
   Object.defineProperty(window, 'columnDrift', { value: Object.freeze({
     play, pause, seek,
