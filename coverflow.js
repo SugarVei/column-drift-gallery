@@ -3,10 +3,9 @@
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const wrap = (value, length) => ((value % length) + length) % length;
-  const settleDelay = 4200;
-
   function createFlow(viewport, mode, photos, {side = '', start = 0} = {}) {
     const helix = mode === 'helix';
+    const autoResumeDelay = helix ? 1000 : 4200;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     const events = new AbortController();
     const options = {signal: events.signal};
@@ -26,7 +25,7 @@
     let drag = null;
     let suppressClick = false;
     let lastFrame = 0;
-    let resumeAt = performance.now() + settleDelay;
+    let resumeAt = performance.now() + autoResumeDelay;
     let lastWheel = -Infinity;
     let frame = 0;
     let destroyed = false;
@@ -149,7 +148,7 @@
     }
 
     function deferAuto(now = performance.now()) {
-      resumeAt = now + settleDelay;
+      resumeAt = now + autoResumeDelay;
     }
 
     function step(direction) {

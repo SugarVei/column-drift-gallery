@@ -7,7 +7,7 @@
   const viewport = $('viewport');
   const app = $('app');
   const photoDialog = $('photo-dialog');
-  const VERSION = 'helix-pair-v1';
+  const VERSION = 'helix-pair-v2';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
   const styles = ['drift', 'helix', 'velocity'];
   const params = new URLSearchParams(location.search);
