@@ -5,7 +5,7 @@
   const wrap = (value, length) => ((value % length) + length) % length;
   const settleDelay = 4200;
 
-  window.createPhotoCoverflow = function createPhotoCoverflow(viewport, mode, photos) {
+  function createFlow(viewport, mode, photos, {side = '', start = 0} = {}) {
     const helix = mode === 'helix';
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     const events = new AbortController();
@@ -16,10 +16,10 @@
     stage.className = 'flow-stage';
     stage.tabIndex = 0;
     stage.setAttribute('role', 'region');
-    stage.setAttribute('aria-label', helix ? '双螺旋照片，拖动或用方向键浏览' : '速度折叠照片，横向拖动或用方向键浏览');
+    stage.setAttribute('aria-label', helix ? `${side}双螺旋照片，拖动或用方向键浏览` : '速度折叠照片，横向拖动或用方向键浏览');
     layout.append(stage);
 
-    let position = 0;
+    let position = start;
     let target = 0;
     let velocity = 0;
     let bend = 0;
@@ -91,7 +91,7 @@
       const height = stage.clientHeight;
       if (!width || !height) return;
       if (helix) {
-        cardWidth = clamp(width * 0.18, 58, 136);
+        cardWidth = clamp(width * 0.20, 48, 136);
         pitch = cardWidth * 0.8;
         radius = Math.min(width * 0.31, 218);
         visible = Math.ceil(height / (2 * pitch)) + 2;
@@ -298,6 +298,31 @@
         cancelAnimationFrame(frame);
         events.abort();
         resize.disconnect();
+      },
+    };
+  }
+
+  window.createPhotoCoverflow = function createPhotoCoverflow(viewport, mode, photos) {
+    if (mode !== 'helix') return createFlow(viewport, mode, photos);
+
+    const pair = document.createElement('div');
+    pair.className = 'helix-pair';
+    const lanes = [document.createElement('div'), document.createElement('div')];
+    pair.append(...lanes);
+    viewport.replaceChildren(pair);
+
+    const midpoint = Math.ceil(photos.length / 2);
+    const left = createFlow(lanes[0], mode, photos.slice(0, midpoint), {side: '左侧'});
+    const rightPhotos = photos.slice(midpoint);
+    const right = createFlow(lanes[1], mode, rightPhotos.length ? rightPhotos : photos, {
+      side: '右侧',
+      start: 2.5,
+    });
+    return {
+      ready: Promise.all([left.ready, right.ready]),
+      destroy() {
+        left.destroy();
+        right.destroy();
       },
     };
   };

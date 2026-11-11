@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#101014">
-  <meta name="color-scheme" content="dark">
-  <meta name="description" content="全屏照片墙，支持五列漂移、双螺旋与速度折叠三种展示风格，可添加自己的照片。">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="全屏照片墙，支持五列漂移、并排双螺旋与速度折叠，可切换黑白背景并添加照片。">
   <title>Column Drift · 流动的回忆</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css?v=coverflow-v1">
+  <link rel="stylesheet" href="styles.css?v=helix-pair-v1">
   <script src="photos.js" defer></script>
-  <script src="coverflow.js?v=coverflow-v1" defer></script>
-  <script src="app.js?v=coverflow-v1" defer></script>
+  <script src="coverflow.js?v=helix-pair-v1" defer></script>
+  <script src="app.js?v=helix-pair-v1" defer></script>
 </head>
 <body>
   <div class="app" id="app">
@@ -39,6 +39,9 @@
       <div class="settings">
         <label class="columns-label" for="columns">布局</label><select id="columns" aria-label="照片列数"><option value="2">2 列</option><option value="3">3 列</option><option value="4">4 列</option><option value="5" selected>5 列</option><option value="6">6 列</option></select>
         <button id="next-group" class="button subtle" type="button" hidden>换一组 <span id="group-label">1 / 1</span></button>
+        <button id="theme-toggle" class="button theme-toggle" type="button" aria-label="切换白色背景" title="切换白色背景">
+          <span class="theme-swatch" aria-hidden="true"></span><span id="theme-label">白底</span>
+        </button>
         <button id="hide-controls" class="button icon-button" type="button" aria-label="隐藏控制栏" title="隐藏控制栏"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 8 6 6 6-6"/></svg></button>
       </div>
     </footer>

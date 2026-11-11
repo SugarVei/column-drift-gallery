@@ -7,16 +7,23 @@
   const viewport = $('viewport');
   const app = $('app');
   const photoDialog = $('photo-dialog');
-  const VERSION = 'coverflow-v1';
+  const VERSION = 'helix-pair-v1';
   const LAYOUT_VERSION = 'five-column-alternating-v1';
   const styles = ['drift', 'helix', 'velocity'];
-  const requestedStyle = new URLSearchParams(location.search).get('mode');
+  const params = new URLSearchParams(location.search);
+  const requestedStyle = params.get('mode');
   let mode = requestedStyle;
   if (!styles.includes(mode)) {
     try { mode = localStorage.getItem('column-drift-style'); } catch (_) {}
   }
   if (!styles.includes(mode)) mode = 'drift';
   $('display-style').value = mode;
+  let theme = params.get('theme');
+  if (theme !== 'light' && theme !== 'dark') {
+    try { theme = localStorage.getItem('column-drift-theme'); } catch (_) {}
+  }
+  theme = theme === 'light' ? 'light' : 'dark';
+  applyTheme();
   let columns = 5;
   try {
     if (localStorage.getItem('column-drift-layout-version') === LAYOUT_VERSION) {
@@ -326,14 +333,34 @@
     notice('已从当前浏览器移除这张照片。');
   }
 
+  function setPageOption(name, value) {
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set(name, value);
+      history.replaceState(null, '', url);
+    } catch (_) {}
+  }
+
+  function applyTheme() {
+    const light = theme === 'light';
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]').content = light ? '#ffffff' : '#101014';
+    const label = light ? '切换黑色背景' : '切换白色背景';
+    $('theme-toggle').setAttribute('aria-label', label);
+    $('theme-toggle').title = label;
+    $('theme-label').textContent = light ? '黑底' : '白底';
+  }
+
+  $('theme-toggle').addEventListener('click', () => {
+    theme = theme === 'light' ? 'dark' : 'light';
+    applyTheme();
+    try { localStorage.setItem('column-drift-theme', theme); } catch (_) {}
+    setPageOption('theme', theme);
+  });
   $('display-style').addEventListener('change', event => {
     mode = event.target.value;
     try { localStorage.setItem('column-drift-style', mode); } catch (_) {}
-    try {
-      const url = new URL(location.href);
-      url.searchParams.set('mode', mode);
-      history.replaceState(null, '', url);
-    } catch (_) {}
+    setPageOption('mode', mode);
     build();
   });
   $('columns').addEventListener('change', () => {
@@ -395,6 +422,7 @@
     play, pause, seek,
     get version() { return VERSION; },
     get mode() { return mode; },
+    get theme() { return theme; },
     get ready() { return ready; },
     get playing() { return playing; },
     get currentTime() { return time; },
